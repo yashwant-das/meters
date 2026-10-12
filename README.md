@@ -19,6 +19,10 @@ Click it for a native popover with live graphs. No Dock icon, no windows, almost
   <img src="docs/dark.png" alt="Meters popover in dark mode" width="49%">
 </p>
 
+## Why I built this
+
+I run LLMs locally on my Mac, and I wanted to see what they were doing to it: how hard the CPU and GPU were working, and how much memory the model was taking up. Activity Monitor felt like too much to keep open, and most menu bar monitors show far more than I need. So I made Meters to be minimal: three numbers in the menu bar, a glance-able graph when you click, and nothing else.
+
 ## Features
 
 - Live CPU, memory and GPU usage in the menu bar
