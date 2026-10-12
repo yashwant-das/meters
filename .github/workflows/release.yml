@@ -1,0 +1,63 @@
+name: Release
+
+# Pushing a tag like v1.0.0 builds Meters.app, zips it and publishes a GitHub Release.
+# Pull requests run the same build without publishing, to catch breakage early.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the newest Xcode on the runner
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Build
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_TYPE" == "tag" ]] || VERSION="0.0.0-dev"
+          xcodebuild \
+            -project meters.xcodeproj \
+            -target meters \
+            -configuration Release \
+            SYMROOT="$PWD/build" \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            DEVELOPMENT_TEAM= \
+            build
+
+      # No Apple Developer account: sign ad hoc so the app runs on Apple silicon.
+      # It isn't notarized, so first launch needs the steps in the README.
+      - name: Sign and zip
+        run: |
+          codesign --force --deep --sign - build/Release/Meters.app
+          codesign --verify --verbose build/Release/Meters.app
+          ditto -c -k --keepParent build/Release/Meters.app Meters.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Meters
+          path: Meters.zip
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" Meters.zip \
+            --title "Meters $GITHUB_REF_NAME" \
+            --generate-notes

@@ -32,6 +32,14 @@ I run LLMs locally on my Mac, and I wanted to see what they were doing to it: ho
 - Launch at login
 - One Swift file, no dependencies
 
+## Install
+
+1. Download `Meters.zip` from the [latest release](https://github.com/yashwant-das/meters/releases/latest) and unzip it.
+2. Drag **Meters** into your Applications folder.
+3. Open it. Meters isn't notarized by Apple (I don't have a paid developer account), so the first time macOS will say it can't check the app. Go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the Meters message. You only need to do this once.
+
+If you'd rather not, you can build it yourself from source (below).
+
 ## Requirements
 
 - macOS 14 Sonoma or later
