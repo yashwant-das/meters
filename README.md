@@ -36,9 +36,23 @@ I run LLMs locally on my Mac, and I wanted to see what they were doing to it: ho
 
 1. Download `Meters.zip` from the [latest release](https://github.com/yashwant-das/meters/releases/latest) and unzip it.
 2. Drag **Meters** into your Applications folder.
-3. Open it. Meters isn't notarized by Apple (I don't have a paid developer account), so the first time macOS will say it can't check the app. Go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the Meters message. You only need to do this once.
+3. Open it. The first time, macOS stops it with a **"Meters" Not Opened** message. Click **Done** (not Move to Bin).
 
-If you'd rather not, you can build it yourself from source (below).
+   <img src="docs/install-blocked.png" alt="macOS message: Meters Not Opened. Apple could not verify Meters is free of malware." width="360">
+
+4. Open **System Settings → Privacy & Security** and scroll down to **Security**. You'll see "Meters" was blocked to protect your Mac. Click **Open Anyway**, confirm with your password or Touch ID, and Meters starts.
+
+   <img src="docs/install-open-anyway.png" alt="Privacy & Security settings showing Meters was blocked, with an Open Anyway button" width="600">
+
+You only need to do this once. After that, Meters opens normally, including at login.
+
+### Why macOS shows this warning
+
+Apple asks developers to pay for a developer account ($99 a year) so that their apps can be signed with a verified identity and *notarized*: uploaded to Apple, scanned for malware and approved. macOS trusts notarized apps automatically.
+
+Meters is a free side project and isn't notarized, so macOS can't tell who made it and blocks it the first time, just to be safe. This doesn't mean anything is wrong with the app. **Open Anyway** is Apple's own way to say you trust it.
+
+If you'd rather not take my word for it, the code is all in this repo. The release itself is built by [GitHub Actions](.github/workflows/release.yml) straight from this source, and you can build it yourself too (below).
 
 ## Requirements
 
