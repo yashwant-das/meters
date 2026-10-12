@@ -24,6 +24,13 @@ struct MetersApp: App {
     }
 }
 
+// MARK: - Preferences
+
+enum Prefs {
+    /// When true, the menu bar shows icons instead of "CPU", "RAM" and "GPU".
+    static let iconLabelsKey = "useIconLabels"
+}
+
 // MARK: - Monitor (samples CPU / RAM / GPU)
 
 @MainActor
@@ -172,6 +179,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = NSHostingController(rootView: StatsView(monitor: monitor))
 
         monitor.onUpdate = { [weak self] in self?.renderTitle() }
+        // Redraw straight away when the label style is switched in the popover.
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.renderTitle() }
+        }
         renderTitle()
     }
 
@@ -185,7 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Builds `CPU 12% | RAM 48% | GPU 8%` with native menu bar typography.
+    /// Builds `CPU 12% | RAM 48% | GPU 8%` (or the icon version) with native menu bar typography.
     private func renderTitle() {
         let labelAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 9.5, weight: .semibold),
@@ -201,19 +214,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .foregroundColor: NSColor.tertiaryLabelColor
         ]
 
+        let useIcons = UserDefaults.standard.bool(forKey: Prefs.iconLabelsKey)
+
         let title = NSMutableAttributedString()
-        func add(_ name: String, _ value: Double?) {
+        func add(_ name: String, _ symbol: String, _ value: Double?) {
             if title.length > 0 {
                 title.append(NSAttributedString(string: "  |  ", attributes: sepAttrs))
             }
-            title.append(NSAttributedString(string: name + " ", attributes: labelAttrs))
+            if useIcons, let icon = labelIcon(symbol, name) {
+                title.append(icon)
+                title.append(NSAttributedString(string: " ", attributes: labelAttrs))
+            } else {
+                title.append(NSAttributedString(string: name + " ", attributes: labelAttrs))
+            }
             title.append(NSAttributedString(string: format(value), attributes: valueAttrs))
         }
 
-        add("CPU", monitor.cpu)
-        add("RAM", monitor.ram)
-        add("GPU", monitor.gpu)
+        // Same SF Symbols as the popover rows.
+        add("CPU", "cpu", monitor.cpu)
+        add("RAM", "memorychip", monitor.ram)
+        add("GPU", "display", monitor.gpu)
         statusItem.button?.attributedTitle = title
+    }
+
+    /// An SF Symbol sized and coloured like the text labels, as an inline attachment.
+    private func labelIcon(_ symbol: String, _ description: String) -> NSAttributedString? {
+        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.secondaryLabelColor]))
+        guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)?
+            .withSymbolConfiguration(config) else { return nil }
+
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        // Nudge down so the icon sits on the same line as the digits.
+        attachment.bounds = CGRect(x: 0, y: -2, width: image.size.width, height: image.size.height)
+        return NSAttributedString(attachment: attachment)
     }
 
     /// Pads with figure spaces (same width as digits) so the bar doesn't jitter.
@@ -230,6 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct StatsView: View {
     @ObservedObject var monitor: SystemMonitor
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @AppStorage(Prefs.iconLabelsKey) private var useIconLabels = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -244,6 +280,10 @@ struct StatsView: View {
                       detail: nil, history: monitor.gpuHistory, tint: .orange)
 
             Divider()
+
+            Toggle("Icons in menu bar", isOn: $useIconLabels)
+                .toggleStyle(.switch)
+                .controlSize(.small)
 
             HStack {
                 Toggle("Launch at login", isOn: Binding(
