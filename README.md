@@ -18,14 +18,14 @@ Click it for a native popover with live graphs. No Dock icon, no windows, almost
 
 ## Requirements
 
-- macOS 13 Ventura or later
-- Xcode 15 or later to build
+- macOS 14 Sonoma or later
+- Xcode 26 or later to build
 
 ## Build from source
 
 1. Clone the repo and open `meters.xcodeproj` in Xcode.
 2. In Signing & Capabilities, select your team (or "Sign to Run Locally").
-3. Make sure **App Sandbox is off**. The GPU numbers come from IOKit, which the sandbox can block.
+3. App Sandbox is turned off in the project, because the GPU numbers come from IOKit, which the sandbox can block.
 4. Press Run (⌘R).
 
 ## How it works
