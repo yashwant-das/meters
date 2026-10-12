@@ -8,6 +8,11 @@ CPU 12%  |  RAM 48%  |  GPU 8%
 
 Click it for a native popover with live graphs. No Dock icon, no windows, almost no CPU cost.
 
+<p align="center">
+  <img src="docs/light.png" alt="Meters popover in light mode" width="49%">
+  <img src="docs/dark.png" alt="Meters popover in dark mode" width="49%">
+</p>
+
 ## Features
 
 - Live CPU, memory and GPU usage in the menu bar
