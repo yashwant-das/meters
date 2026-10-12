@@ -1,10 +1,16 @@
-# Meters
+<p align="center">
+  <img src="docs/app-icon.svg" alt="Meters app icon" width="128">
+</p>
+
+<h1 align="center">Meters</h1>
 
 A tiny macOS menu bar app that shows your Mac's CPU, memory and GPU usage at a glance.
 
 ```
 CPU 12%  |  RAM 48%  |  GPU 8%
 ```
+
+Prefer something more compact? Flip on **Icons in menu bar** and the labels become the same SF Symbols the popover uses.
 
 Click it for a native popover with live graphs. No Dock icon, no windows, almost no CPU cost.
 
@@ -16,6 +22,7 @@ Click it for a native popover with live graphs. No Dock icon, no windows, almost
 ## Features
 
 - Live CPU, memory and GPU usage in the menu bar
+- Text or icon labels in the menu bar, switchable from the popover
 - Native look: system fonts, SF Symbols, light and dark mode
 - Popover with a 2-minute history graph for each metric
 - Launch at login
@@ -30,8 +37,9 @@ Click it for a native popover with live graphs. No Dock icon, no windows, almost
 
 1. Clone the repo and open `meters.xcodeproj` in Xcode.
 2. In Signing & Capabilities, select your team (or "Sign to Run Locally").
-3. App Sandbox is turned off in the project, because the GPU numbers come from IOKit, which the sandbox can block.
-4. Press Run (⌘R).
+3. Press Run (⌘R). Xcode builds `Meters.app` and it appears in your menu bar.
+
+App Sandbox is turned off on purpose: the GPU numbers come from IOKit, which the sandbox can block.
 
 ## How it works
 
