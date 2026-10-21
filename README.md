@@ -26,11 +26,24 @@ I run LLMs locally on my Mac, and I wanted to see what they were doing to it: ho
 ## Features
 
 - Live CPU, memory and GPU usage in the menu bar
+- CPU, RAM and GPU percentages turn amber at 60% usage and red at 80%
 - Text or icon labels in the menu bar, switchable from the popover
 - Native look: system fonts, SF Symbols, light and dark mode
 - Popover with a 2-minute history graph for each metric
 - Launch at login
 - One Swift file, no dependencies
+
+### Usage colors
+
+Each CPU, RAM and GPU percentage in the menu bar changes color independently:
+
+| Usage | Percentage color |
+|---|---|
+| Below 60% | Default text color |
+| 60% to below 80% | Amber |
+| 80% and above | Red |
+
+These colors apply with both text and icon labels. Only the percentages change color; labels, icons and separators keep their usual appearance. An unavailable GPU reading (`--%`) keeps the default text color.
 
 ## Install
 

@@ -227,7 +227,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 title.append(NSAttributedString(string: name + " ", attributes: labelAttrs))
             }
-            title.append(NSAttributedString(string: format(value), attributes: valueAttrs))
+            var attrs = valueAttrs
+            // Keep low or unavailable usage neutral; highlight elevated percentages.
+            let color: NSColor
+            if let value, value >= 80 {
+                color = .systemRed
+            } else if let value, value >= 60 {
+                color = .systemOrange
+            } else {
+                color = .labelColor
+            }
+            attrs[.foregroundColor] = color
+            title.append(NSAttributedString(string: format(value), attributes: attrs))
         }
 
         // Same SF Symbols as the popover rows.
