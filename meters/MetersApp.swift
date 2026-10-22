@@ -227,7 +227,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 title.append(NSAttributedString(string: name + " ", attributes: labelAttrs))
             }
-            title.append(NSAttributedString(string: format(value), attributes: valueAttrs))
+            var attrs = valueAttrs
+            // Keep low or unavailable usage neutral; highlight elevated percentages.
+            let color: NSColor
+            if let value, value >= 80 {
+                color = .systemRed
+            } else if let value, value >= 60 {
+                color = .systemOrange
+            } else {
+                color = .labelColor
+            }
+            attrs[.foregroundColor] = color
+            title.append(NSAttributedString(string: format(value), attributes: attrs))
         }
 
         // Same SF Symbols as the popover rows.
@@ -272,7 +283,7 @@ struct StatsView: View {
             MetricRow(title: "CPU", symbol: "cpu", value: monitor.cpu,
                       detail: nil, history: monitor.cpuHistory, tint: .blue)
 
-            MetricRow(title: "Memory", symbol: "memorychip", value: monitor.ram,
+            MetricRow(title: "RAM", symbol: "memorychip", value: monitor.ram,
                       detail: String(format: "%.1f of %.0f GB", monitor.ramUsedGB, monitor.ramTotalGB),
                       history: monitor.ramHistory, tint: .green)
 
@@ -281,11 +292,18 @@ struct StatsView: View {
 
             Divider()
 
-            Toggle("Icons in menu bar", isOn: $useIconLabels)
-                .toggleStyle(.switch)
-                .controlSize(.small)
+            HStack {
+                Text("Icons in menu bar")
+                Spacer()
+                Toggle("Icons in menu bar", isOn: $useIconLabels)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            }
 
             HStack {
+                Text("Launch at login")
+                Spacer()
                 Toggle("Launch at login", isOn: Binding(
                     get: { launchAtLogin },
                     set: { newValue in
@@ -301,15 +319,25 @@ struct StatsView: View {
                         launchAtLogin = SMAppService.mainApp.status == .enabled
                     }
                 ))
+                .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
-
-                Spacer()
-
-                Button("Quit") { NSApp.terminate(nil) }
-                    .controlSize(.small)
-                    .keyboardShortcut("q")
             }
+
+            Divider()
+
+            Button(action: { NSApp.terminate(nil) }) {
+                HStack {
+                    Text("Quit Meters")
+                    Spacer()
+                    Text("⌘Q")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("q")
         }
         .padding(16)
         .frame(width: 280)
