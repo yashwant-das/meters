@@ -46,9 +46,13 @@ enum Prefs {
     static let iconLabelsKey = "useIconLabels"
     static let popoverLayoutKey = "popoverLayout"
     static let menuBarStyleKey = "menuBarStyle"
+    static let usageColorsKey = "colorReadingsByUsage"
 
     /// Preserve the old icon preference only when no new style has been chosen.
     static func migrate(in defaults: UserDefaults = .standard) {
+        if defaults.object(forKey: usageColorsKey) == nil {
+            defaults.set(true, forKey: usageColorsKey)
+        }
         if defaults.object(forKey: menuBarStyleKey) == nil {
             let style: MenuBarStyle = defaults.bool(forKey: iconLabelsKey) ? .symbols : .text
             defaults.set(style.rawValue, forKey: menuBarStyleKey)

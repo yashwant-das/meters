@@ -1,143 +1,237 @@
 <p align="center">
-  <img src="docs/app-icon.svg" alt="Meters app icon" width="128">
+  <img src="docs/app-icon.svg" alt="Meters app icon" width="88">
 </p>
 
 <h1 align="center">Meters</h1>
-
-A tiny macOS menu bar app that shows your Mac's CPU, memory and GPU usage at a glance.
-
-```
-CPU 12%   GPU 8%   RAM 48%
-```
-
-Open **Settings…** in the popover to choose a menu bar style: **Refined text**, **Compact symbols**, or **Text with micro meters**. Choose the popover layout independently: **Grouped system panel**, **Compact menu extra**, or **Activity Monitor miniature**. All nine combinations are supported, and both choices are remembered between launches.
-
-Click it for a native popover with live graphs. Monitoring lives in the menu bar, with no Dock icon and a separate settings window.
+<p align="center"><strong>Your Mac. At a glance.</strong></p>
+<p align="center">CPU, GPU and memory, right in your menu bar.<br>A free, native macOS app built with SwiftUI and AppKit.</p>
 
 <p align="center">
-  <img src="docs/light.png" alt="Meters popover in light mode" width="49%">
-  <img src="docs/dark.png" alt="Meters popover in dark mode" width="49%">
+  <a href="https://github.com/yashwant-das/meters/releases/latest"><strong>Download for macOS</strong></a>
+  &nbsp; · &nbsp;
+  <a href="#pick-your-view">Explore the UI</a>
+  &nbsp; · &nbsp;
+  <a href="#build-from-source">Build from source</a>
+  &nbsp; · &nbsp;
+  <a href="ROADMAP.md">Roadmap</a>
 </p>
 
-## Why I built this
+<p align="center">
+  <img src="docs/images/hero.png" alt="Meters with the Compact popover in light appearance and Activity Monitor layout in dark appearance" width="1100">
+</p>
 
-I run LLMs locally on my Mac, and I wanted to see what they were doing to it: how hard the CPU and GPU were working, and how much memory the model was taking up. Activity Monitor felt like too much to keep open, and most menu bar monitors show far more than I need. So I made Meters to be minimal: three numbers in the menu bar, a glance-able graph when you click, and nothing else.
+> **Next-release preview:** These images show the current source build. The new layouts and inline customization are not released yet; [build from source](#build-from-source) to try them now.
 
-## Features
+## See what your Mac is doing
 
-- Live CPU, memory and GPU usage in the menu bar
-- CPU, RAM and GPU percentages turn amber at 60% usage and red at 80%
-- Three independent menu bar styles: refined text, compact SF Symbols, or text with tiny usage meters
-- Three popover layouts: grouped sections, compact expandable details, or an Activity Monitor-style overview
-- Native appearance settings with a live menu bar preview; changes apply immediately
-- Native look: system fonts, SF Symbols, light and dark mode
-- Separate efficiency/performance core readings and overlaid CPU history
-- Thermal state, 1/5/15-minute load averages and system uptime
-- GPU utilization and GPU memory usage with overlaid history
-- Stacked memory bar with wired, active, compressed and free memory
-- Up to 2 minutes of CPU and GPU history, sampled every 2 seconds
-- Timestamped charts keep the history window accurate if sampling is delayed
-- Launch at login
-- Native SwiftUI, no dependencies
+Keep an eye on your Mac while compiling, rendering, or running local models. Meters puts live CPU, GPU and RAM percentages in the menu bar. Click once for a closer look at core activity, memory usage, thermals, and up to two minutes of history.
 
-### Usage colors
+- **Useful at a glance.** Choose text, SF Symbols, or tiny usage meters. Readings keep a stable width as values change.
+- **Detail when you want it.** Compare efficiency and performance cores, GPU activity and memory, or expand the full memory breakdown.
+- **Fits your Mac.** System typography, native controls, and light or dark appearance that follows macOS. The panel fits its content and scrolls on shorter screens.
+- **Runs locally.** Monitoring reads macOS system counters. No account is required, and the app stays out of the Dock.
 
-Each CPU, RAM and GPU percentage in the menu bar changes color independently:
+## Pick your view
 
-| Usage | Percentage color |
+Choose how much detail you want in the popover. Pair any layout with any menu bar style: all nine combinations work independently.
+
+<table>
+  <tr>
+    <th width="33%">Grouped</th>
+    <th width="33%">Compact</th>
+    <th width="33%">Activity Monitor</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/grouped-dark.png"><img src="docs/images/grouped-light.png" alt="Grouped layout: CPU, GPU and memory in separate cards with full statistics" width="300"></picture></td>
+    <td align="center" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/compact-dark.png"><img src="docs/images/compact-light.png" alt="Compact layout: shorter charts with expandable memory and system details" width="300"></picture></td>
+    <td align="center" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/activity-dark.png"><img src="docs/images/activity-light.png" alt="Activity Monitor layout: overview percentages above detailed history charts" width="300"></picture></td>
+  </tr>
+  <tr>
+    <td valign="top">Every statistic visible in distinct sections.</td>
+    <td valign="top">A smaller panel with details you can expand.</td>
+    <td valign="top">Headline readings followed by a fuller history view.</td>
+  </tr>
+</table>
+
+Images above adapt to your GitHub appearance. [Browse the full gallery](docs/GALLERY.md) for both themes, expanded details, customization, and unavailable readings.
+
+## Give your menu bar a style
+
+Keep familiar text labels, switch to monochrome SF Symbols, or add micro meters alongside each percentage. The order is always **CPU → GPU → RAM**, with the macOS menu bar typeface.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/menu-styles-dark.png">
+    <img src="docs/images/menu-styles-light.png" alt="All three native menu bar styles: Text, Symbols, and Micro meters, each showing CPU 12%, GPU 8%, RAM 48%" width="760">
+  </picture>
+</p>
+
+Usage colors are optional. With them on, each percentage and micro-meter fill turns orange at 60% and red at 80%. Switch them off for the standard macOS text color. Labels and symbols keep their usual appearance.
+
+<details>
+<summary><strong>Compare usage colors on and off</strong></summary>
+<br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-colors-dark.png">
+  <img src="docs/images/usage-colors-light.png" alt="Usage-color comparison: CPU 59% stays neutral, GPU 65% is orange, and RAM 85% is red; disabling usage colors makes all three neutral" width="760">
+</picture>
+
+| Usage | With usage colors on |
 |---|---|
-| Below 60% | Default text color |
-| 60% to below 80% | Amber |
+| Below 60% | Standard text color |
+| 60% to below 80% | Orange |
 | 80% and above | Red |
 
-These colors apply with both text and icon labels. Labels and icons keep their usual appearance. An unavailable GPU reading (`--%`) keeps the default text color.
+Unavailable readings use `--%` and keep the standard text color. Usage thresholds describe utilization, not memory pressure.
 
-Micro-meter fills also use the usage colors. All styles reserve space for three-digit readings, so `0%`, `100%` and unavailable readings keep the menu bar steady. Existing users who enabled icon labels keep the compact-symbol style when updating.
+</details>
 
-Graph colors identify series independently of the usage thresholds above. CPU efficiency is teal (solid), performance is blue (dashed), and an unsplit CPU total is blue (solid). GPU utilization is blue (solid); GPU memory is purple (dashed). Legends repeat the line patterns so overlapping series can be distinguished without color alone. Memory categories use blue for wired, teal for active, purple for compressed, and neutral gray for available. These category colors do not indicate memory pressure. The palette has separate light and dark variants; orange/red remain status indicators for menu bar usage and thermal state.
+## Make it yours, in place
 
-### Appearance settings
+Open the header gear, choose **Customize…**, or press **⌘,**. Settings unfold above your live dashboard, so you can see each change as you make it. Monitoring history keeps running.
 
-Click **Settings…** at the bottom of any popover, or press **⌘,** while Meters is active. The popover layout and menu bar style are separate choices. In the compact layout, expand **Memory breakdown** or **System details** for the full statistics; the panel scrolls when needed. **Launch at login** lives in the same settings window and reports if macOS needs approval in Login Items.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/customize-dark.png">
+    <img src="docs/images/customize-light.png" alt="Inline Customize controls above the live dashboard: panel layout, menu bar style, usage colors, and launch at login; footer remains accessible" width="380">
+  </picture>
+</p>
 
-The app uses macOS system typography, SF Symbols, native controls and popover material in both light and dark mode. The editable design reference is [Meters in Figma](https://www.figma.com/design/ZaNr6Mp1dDnydetqmW7cSN?node-id=8-4).
+Choose the panel layout and menu bar style separately, toggle usage colors, and enable launch at login. Your choices are remembered. **Done** collapses the controls; the next time you open Meters, it starts with your readings in view. If Customize is scrolled out of sight, **⌘,** brings it back.
+
+<sub>Native UI renders use illustrative readings. Popover material varies with the desktop behind it.</sub>
 
 ## Install
 
+**Requires macOS 14 Sonoma or later.**
+
 1. Download `Meters.zip` from the [latest release](https://github.com/yashwant-das/meters/releases/latest) and unzip it.
-2. Drag **Meters** into your Applications folder.
-3. Open it. The first time, macOS stops it with a **"Meters" Not Opened** message. Click **Done** (not Move to Bin).
+2. Drag **Meters** into Applications.
+3. Open the app and look for the readings in your menu bar.
 
-   <img src="docs/install-blocked.png" alt="macOS message: Meters Not Opened. Apple could not verify Meters is free of malware." width="360">
+The release build is signed ad hoc and is not notarized. macOS may require you to allow it in Privacy & Security on first launch.
 
-4. Open **System Settings → Privacy & Security** and scroll down to **Security**. You'll see "Meters" was blocked to protect your Mac. Click **Open Anyway**, confirm with your password or Touch ID, and Meters starts.
+<details>
+<summary><strong>First launch: “Meters Not Opened”</strong></summary>
 
-   <img src="docs/install-open-anyway.png" alt="Privacy & Security settings showing Meters was blocked, with an Open Anyway button" width="600">
+1. Click **Done** in the macOS warning.
 
-You only need to do this once. After that, Meters opens normally, including at login.
+   <img src="docs/install-blocked.png" alt="macOS first-launch warning with Done and Move to Bin buttons" width="360">
 
-### Why macOS shows this warning
+2. Open **System Settings → Privacy & Security**. Under Security, find the message about Meters and choose **Open Anyway**.
 
-Apple asks developers to pay for a developer account ($99 a year) so that their apps can be signed with a verified identity and *notarized*: uploaded to Apple, scanned for malware and approved. macOS trusts notarized apps automatically.
+   <img src="docs/install-open-anyway.png" alt="Privacy & Security settings with Open Anyway for Meters" width="600">
 
-Meters is a free side project and isn't notarized, so macOS can't tell who made it and blocks it the first time, just to be safe. This doesn't mean anything is wrong with the app. **Open Anyway** is Apple's own way to say you trust it.
+3. Confirm with your password or Touch ID, then open Meters.
 
-If you'd rather not take my word for it, the code is all in this repo. The release itself is built by [GitHub Actions](.github/workflows/release.yml) straight from this source, and you can build it yourself too (below).
+This is a first-launch step. You can enable **Launch at login** in Customize afterward. If macOS needs Login Items approval, Meters shows the next step there.
 
-## Requirements
+The [release workflow](.github/workflows/release.yml) builds from the repository source. You can also build it yourself below.
 
-- macOS 14 Sonoma or later
-- Xcode 26 or later to build
+</details>
 
-## Build from source
+## A closer look at the readings
 
-1. Clone the repo and open `meters.xcodeproj` in Xcode.
-2. In Signing & Capabilities, select your team (or "Sign to Run Locally").
-3. Press Run (⌘R). Xcode builds `Meters.app` and it appears in your menu bar.
+| In Meters | What you can see |
+|---|---|
+| CPU | Total utilization, separate efficiency/performance core readings when available, and overlaid history |
+| GPU | Utilization and in-use GPU memory, with both series in the history chart |
+| Memory | Used/total memory, plus wired, active, compressed, and available categories |
+| System | Thermal state, load averages over 1/5/15 minutes, and uptime |
+| History | Up to two minutes of timestamped samples, collected every two seconds |
 
-App Sandbox is turned off on purpose: the GPU numbers come from IOKit, which the sandbox can block.
+<details>
+<summary><strong>How to read the graph colors</strong></summary>
 
-### Xcode UI previews
+| Series | Color and line |
+|---|---|
+| CPU efficiency | Teal, solid |
+| CPU performance | Blue, dashed |
+| CPU total, when the core split is unavailable | Blue, solid |
+| GPU utilization | Blue, solid |
+| GPU memory | Purple, dashed |
 
-Open `meters/UIPreviews.swift`, then choose **Editor → Canvas** (⌥⌘↩) and click **Resume** if needed. The Canvas includes each popover layout, all three real AppKit menu bar styles, and settings in light and dark appearance. Popovers use live readings from your Mac, so history fills as samples arrive. Preview preferences are separate from the app's saved settings. Settings previews are visual only, to avoid changing launch-at-login from the Canvas.
+Legends repeat the line patterns to help distinguish overlapping series. The palette has separate light and dark variants. Memory categories use blue for wired, teal for active, purple for compressed, and neutral gray for available.
 
-## How it works
+Graph colors identify series; they do not indicate severity. The menu bar's optional orange/red thresholds and macOS thermal-state badge communicate status separately.
+
+</details>
+
+<details>
+<summary><strong>Data sources and hardware limitations</strong></summary>
 
 | Metric | Source |
 |---|---|
 | CPU | `host_processor_info` per-core tick deltas, grouped by logical CPU IDs and E/P cluster types from IOKit |
-| Memory | `host_statistics64`, counting app + wired + compressed memory (the same idea as Activity Monitor's "Memory Used") |
+| Memory | `host_statistics64`, counting app + wired + compressed memory |
 | GPU | IOKit `IOAccelerator` `PerformanceStatistics`, including in-use system memory |
 | System | `ProcessInfo` thermal state and uptime; `getloadavg` for load averages |
 
-The GPU values come from an undocumented IOKit interface. Key names differ between hardware and macOS versions, so on some machines the GPU may show `--%`. If that happens on yours, please open an issue with your Mac model and macOS version.
+GPU counters come from an undocumented IOKit interface. Availability and key names vary by hardware and macOS version. Unsupported counters show `N/A` in the popover and `--%` in the menu bar. A missing core split also shows `N/A`, while aggregate CPU usage continues. [See the unavailable-data UI](docs/GALLERY.md#unavailable-readings).
 
-The memory breakdown preserves the existing Activity Monitor-style total: **Active** is internal memory minus purgeable memory, **Wired** is resident wired memory, and **Compressed** is the compressor’s physical footprint. **Available** is total minus used, including reclaimable cache; it is not just the kernel’s free-page count. GPU memory uses the driver’s in-use memory counter, not allocated memory, and its history shows a percentage of total system memory. GPU memory overlaps system memory on Apple Silicon.
+The memory total follows the Activity Monitor-style “Memory Used” calculation. **Active** is internal memory minus purgeable memory; **Wired** is resident wired memory; **Compressed** is the compressor’s physical footprint. **Available** is total minus used, including reclaimable cache.
 
-E/P readings show `N/A` when core topology is unavailable; aggregate CPU usage still works. Missing GPU usage or memory counters also show `N/A`. History starts with real samples rather than padded zero readings. The panel scrolls on smaller displays.
+GPU memory overlaps system memory on Apple Silicon. It uses the driver's in-use counter, and its graph shows a share of total system memory, not dedicated VRAM. Core-group percentages are averaged within each group; the CPU total is weighted across all cores.
 
-### Check metric calculations
+History starts with real samples, without padding in zero readings. Timestamps keep the chart accurate if sampling is delayed. The [source](meters) is available to inspect these calculations.
+
+</details>
+
+## Build from source
+
+Use **Xcode 26 or later**.
+
+1. Clone this repository and open `meters.xcodeproj`.
+2. In **Signing & Capabilities**, select your team or **Sign to Run Locally**.
+3. Press **⌘R**. Meters appears in your menu bar.
+
+App Sandbox is disabled because GPU monitoring uses IOKit. The app has no external package dependencies.
+
+<details>
+<summary><strong>Xcode Canvas previews</strong></summary>
+
+Open `meters/UIPreviews.swift`, choose **Editor → Canvas** (⌥⌘↩), and click **Resume** if needed. Previews include all three layouts, all three real AppKit menu bar styles, and inline Customize in light and dark appearance.
+
+Popover previews use live readings, so history fills as samples arrive. Preview preferences are isolated from the app's saved settings. Customize previews are visual only to avoid changing launch at login from the Canvas.
+
+</details>
+
+<details>
+<summary><strong>Run the checks</strong></summary>
+
+Metric calculations:
 
 ```sh
 swiftc meters/MonitoringData.swift tests/MonitoringDataTests.swift -o /tmp/meters-data-tests
 /tmp/meters-data-tests
 ```
 
-Check preference migration, all nine style combinations, safe formatting and stable rendered menu widths:
+Preferences, all nine combinations, formatting, menu widths, and usage colors:
 
 ```sh
 swiftc meters/AppearancePreferences.swift meters/MenuBarRenderer.swift tests/AppearanceTests.swift -o /tmp/meters-appearance-tests
 /tmp/meters-appearance-tests
 ```
 
-## Roadmap
+Content sizing and Customize presentation:
 
-See the [roadmap](ROADMAP.md) for planned features, including **live oMLX token tracking** and a later **Ollama integration**, plus network/disk activity, menu bar metric selection, and refresh controls.
+```sh
+swiftc meters/PopoverPresentation.swift tests/PopoverPresentationTests.swift -o /tmp/meters-popover-tests
+/tmp/meters-popover-tests
+```
 
-## Contributing
+To refresh the documentation images, see the [gallery capture notes](docs/GALLERY.md#refreshing-the-images).
 
-Issues and pull requests are welcome.
+</details>
 
-## License
+## Why I built Meters
 
-[MIT](LICENSE)
+I run LLMs locally on my Mac and wanted to see how hard the CPU and GPU were working, and how much memory the model was using. Activity Monitor felt like too much to keep open. I made Meters so those readings could stay in the menu bar, with the detail a click away.
+
+## What’s next
+
+The [roadmap](ROADMAP.md) tracks planned work, including oMLX token tracking first, an Ollama integration later, and network/disk activity. Token tracking is not implemented yet.
+
+Issues and pull requests are welcome. Include your Mac model and macOS version when reporting missing counters or a UI issue.
+
+<p align="center"><a href="https://github.com/yashwant-das/meters/releases/latest">Download Meters</a> &nbsp; · &nbsp; <a href="https://github.com/yashwant-das/meters/issues">Report an issue</a> &nbsp; · &nbsp; <a href="LICENSE">MIT license</a></p>

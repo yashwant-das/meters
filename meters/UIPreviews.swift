@@ -15,15 +15,18 @@ private enum PreviewPreferences {
 private struct PopoverCanvas: View {
     let layout: PopoverLayout
     let scheme: ColorScheme
+    var customizing = false
     @StateObject private var monitor = SystemMonitor()
+    @StateObject private var presentation = PopoverPresentation()
 
     var body: some View {
-        StatsView(monitor: monitor, openSettings: {})
-            .defaultAppStorage(PreviewPreferences.store("\(layout.rawValue)-\(scheme)", layout: layout))
+        StatsView(monitor: monitor, presentation: presentation)
+            .defaultAppStorage(PreviewPreferences.store("\(layout.rawValue)-\(scheme)-\(customizing)", layout: layout))
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
             .padding(20)
             .background(Color(nsColor: .windowBackgroundColor))
             .preferredColorScheme(scheme)
+            .onAppear { presentation.customizing = customizing }
     }
 }
 
@@ -105,17 +108,13 @@ private struct MenuBarCanvas: View {
     MenuBarCanvas(scheme: .dark)
 }
 
-#Preview("Settings · Light", traits: .sizeThatFitsLayout) {
-    AppearanceSettingsView()
-        .defaultAppStorage(PreviewPreferences.store("settings-light"))
-        .preferredColorScheme(.light)
+#Preview("Customize · Light", traits: .sizeThatFitsLayout) {
+    PopoverCanvas(layout: .compact, scheme: .light, customizing: true)
         .allowsHitTesting(false)
 }
 
-#Preview("Settings · Dark", traits: .sizeThatFitsLayout) {
-    AppearanceSettingsView()
-        .defaultAppStorage(PreviewPreferences.store("settings-dark"))
-        .preferredColorScheme(.dark)
+#Preview("Customize · Dark", traits: .sizeThatFitsLayout) {
+    PopoverCanvas(layout: .compact, scheme: .dark, customizing: true)
         .allowsHitTesting(false)
 }
 #endif

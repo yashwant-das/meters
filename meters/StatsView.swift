@@ -11,56 +11,114 @@ private enum MetricPalette {
 
 struct StatsView: View {
     @ObservedObject var monitor: SystemMonitor
-    var openSettings: () -> Void
+    @ObservedObject var presentation: PopoverPresentation
+    var onSizeChange: (CGSize) -> Void = { _ in }
+    @State private var measuredHeights: [String: CGFloat] = [:]
     @AppStorage(Prefs.popoverLayoutKey) private var layout: PopoverLayout = .grouped
     @State private var memoryExpanded = false
     @State private var systemExpanded = false
 
-    static func height(for layout: PopoverLayout) -> CGFloat {
-        let preferred: CGFloat = layout == .compact ? 490 : (layout == .activity ? 690 : 730)
-        return min(preferred, (NSScreen.main?.visibleFrame.height ?? 850) - 80)
+    private var chromeHeight: CGFloat {
+        (measuredHeights["header"] ?? 42) + (measuredHeights["footer"] ?? 42)
+    }
+
+    private var panelHeight: CGFloat {
+        PopoverSizing.height(content: measuredHeights["content"] ?? 450,
+                            chrome: chromeHeight, available: presentation.maximumHeight)
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Meters").font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Circle().fill(.green).frame(width: 4, height: 4)
-                        Text("Live").font(.system(size: 10))
-                    }
-                    .foregroundStyle(.secondary)
-                    .help("Updates every 2 seconds")
-                }
-                .padding(.bottom, 2)
+        VStack(spacing: 0) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 12).padding(.bottom, 10)
+                .measurePanelHeight("header")
 
-                if layout == .activity { overview }
-                metricSection { cpuContent }
-                if layout != .grouped { Divider() }
-                metricSection { gpuContent }
-                if layout != .grouped { Divider() }
-                metricSection { memoryContent }
-
-                if layout == .compact {
-                    Divider()
-                    thermalRow
-                    DisclosureGroup("System details", isExpanded: $systemExpanded) {
-                        systemDetails.padding(.top, 6)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if presentation.customizing {
+                            AppearanceSettingsView { presentation.customizing = false }
+                                .id("customize")
+                        }
+                        dashboard
                     }
-                    .font(.caption)
-                    .tint(.secondary)
-                } else {
-                    thermalRow
-                    systemDetails
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .measurePanelHeight("content")
                 }
-                footer
+                .scrollIndicators(.automatic)
+                .frame(height: max(0, panelHeight - chromeHeight))
+                .onChange(of: presentation.customizationRequest) { _, _ in
+                    proxy.scrollTo("customize", anchor: .top)
+                }
             }
-            .padding(16)
+
+            footer
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+                .measurePanelHeight("footer")
         }
-        .scrollIndicators(.hidden)
-        .frame(width: 316, height: Self.height(for: layout))
+        .frame(width: 316, height: panelHeight)
+        .onPreferenceChange(PanelHeightPreference.self) { heights in
+            if measuredHeights != heights { measuredHeights = heights }
+        }
+        .onChange(of: panelHeight, initial: true) { _, height in
+            onSizeChange(CGSize(width: 316, height: height))
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text("Meters").font(.system(size: 13, weight: .semibold))
+            Spacer()
+            HStack(spacing: 4) {
+                Circle().fill(.green).frame(width: 4, height: 4)
+                Text("Live").font(.system(size: 10))
+            }
+            .foregroundStyle(.secondary)
+            .help("Updates every 2 seconds")
+            Button {
+                if presentation.customizing { presentation.customizing = false }
+                else { presentation.openCustomization() }
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 12))
+                    .padding(4)
+                    .background(presentation.customizing ? Color.primary.opacity(0.08) : .clear,
+                                in: RoundedRectangle(cornerRadius: 5))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Customize Meters")
+            .accessibilityValue(presentation.customizing ? "Expanded" : "Collapsed")
+            .help("Customize Meters")
+        }
+    }
+
+    private var dashboard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if layout == .activity { overview }
+            metricSection { cpuContent }
+            if layout != .grouped { Divider() }
+            metricSection { gpuContent }
+            if layout != .grouped { Divider() }
+            metricSection { memoryContent }
+
+            if layout == .compact {
+                Divider()
+                thermalRow
+                DisclosureGroup("System details", isExpanded: $systemExpanded) {
+                    systemDetails.padding(.top, 6)
+                }
+                .font(.caption)
+                .tint(.secondary)
+            } else {
+                thermalRow
+                systemDetails
+            }
+        }
     }
 
     private func metricSection<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -246,7 +304,9 @@ struct StatsView: View {
         VStack(spacing: 10) {
             Divider()
             HStack {
-                Button(action: openSettings) { Label("Settings…", systemImage: "gearshape") }
+                Button { presentation.openCustomization() } label: {
+                    Text("Customize…")
+                }
                     .keyboardShortcut(",", modifiers: .command)
                 Spacer()
                 Button { NSApp.terminate(nil) } label: {
@@ -420,5 +480,23 @@ private struct HistoryChart: View {
         }
         .frame(height: height)
         .accessibilityLabel(label)
+    }
+}
+
+/// Measure intrinsic content independently of the capped scroll viewport.
+private struct PanelHeightPreference: PreferenceKey {
+    static var defaultValue: [String: CGFloat] { [:] }
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private extension View {
+    func measurePanelHeight(_ part: String) -> some View {
+        background {
+            GeometryReader { geometry in
+                Color.clear.preference(key: PanelHeightPreference.self, value: [part: geometry.size.height])
+            }
+        }
     }
 }

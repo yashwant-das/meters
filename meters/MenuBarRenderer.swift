@@ -5,7 +5,7 @@ import CoreText
 enum MenuBarRenderer {
     static let symbolHeight: CGFloat = 16
 
-    static func title(cpu: Double?, ram: Double?, gpu: Double?, style: MenuBarStyle) -> NSAttributedString {
+    static func title(cpu: Double?, ram: Double?, gpu: Double?, style: MenuBarStyle, usageColors: Bool = true) -> NSAttributedString {
         let systemFont = NSFont.menuBarFont(ofSize: 0)
         let digitDescriptor = systemFont.fontDescriptor.addingAttributes([
             .featureSettings: [[
@@ -30,7 +30,7 @@ enum MenuBarRenderer {
                 result.append(NSAttributedString(string: name + " ", attributes: label))
             }
             if style == .meters {
-                result.append(attachment(meterImage(value), width: 4, height: 12))
+                result.append(attachment(meterImage(value, usageColors: usageColors), width: 4, height: 12))
                 result.append(NSAttributedString(string: " ", attributes: label))
             }
             // Figure spaces/dashes occupy digit widths without changing the system typeface.
@@ -39,13 +39,14 @@ enum MenuBarRenderer {
                 .font: digitFont,
                 .kern: 0,
                 .ligature: 0,
-                .foregroundColor: color(value)
+                .foregroundColor: color(value, usageColors: usageColors)
             ]))
         }
         return result
     }
 
-    private static func color(_ value: Double?) -> NSColor {
+    private static func color(_ value: Double?, usageColors: Bool) -> NSColor {
+        guard usageColors else { return .labelColor }
         switch MenuBarPresentation.level(value) {
         case .normal: return .labelColor
         case .elevated: return .systemOrange
@@ -66,13 +67,13 @@ enum MenuBarRenderer {
         return NSAttributedString(attachment: attachment)
     }
 
-    private static func meterImage(_ value: Double?) -> NSImage {
+    private static func meterImage(_ value: Double?, usageColors: Bool) -> NSImage {
         let fraction = MenuBarPresentation.fraction(value)
         let image = NSImage(size: NSSize(width: 4, height: 12), flipped: false) { rect in
             NSColor.labelColor.withAlphaComponent(0.14).setFill()
             NSBezierPath(roundedRect: rect, xRadius: 1, yRadius: 1).fill()
             if let fraction, fraction > 0 {
-                color(value).setFill()
+                color(value, usageColors: usageColors).setFill()
                 NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: 4, height: max(1, 12 * fraction)),
                              xRadius: 1, yRadius: 1).fill()
             }

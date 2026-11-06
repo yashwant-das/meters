@@ -9,6 +9,10 @@ struct AppearanceTests {
         defer { defaults.removePersistentDomain(forName: suite) }
 
         Prefs.migrate(in: defaults)
+        assert(defaults.bool(forKey: Prefs.usageColorsKey), "New and existing users keep usage colors by default")
+        defaults.set(false, forKey: Prefs.usageColorsKey)
+        Prefs.migrate(in: defaults)
+        assert(!defaults.bool(forKey: Prefs.usageColorsKey), "Migration must preserve an explicit opt-out")
         assert(defaults.string(forKey: Prefs.popoverLayoutKey) == PopoverLayout.grouped.rawValue)
         assert(defaults.string(forKey: Prefs.menuBarStyleKey) == MenuBarStyle.text.rawValue)
         defaults.removePersistentDomain(forName: suite)
@@ -45,6 +49,49 @@ struct AppearanceTests {
         assert(MenuBarPresentation.level(60) == .elevated)
         assert(MenuBarPresentation.level(80) == .high)
         assert(MenuBarPresentation.level(nil) == .normal)
+
+        // Disabling usage colors must affect the real rendered readings, including warnings.
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            NSAppearance(named: appearance)!.performAsCurrentDrawingAppearance {
+                for style in MenuBarStyle.allCases {
+                    for value: Double? in [nil, 59, 60, 80, 100] {
+                        let colored = MenuBarRenderer.title(cpu: value, ram: value, gpu: value, style: style)
+                        let neutral = MenuBarRenderer.title(cpu: value, ram: value, gpu: value, style: style, usageColors: false)
+                        assert(colored.string == neutral.string)
+                        assert(abs(colored.size().width - neutral.size().width) < 0.5)
+                        for (title, enabled) in [(colored, true), (neutral, false)] {
+                            let reading = (title.string as NSString).range(of: "%")
+                            let actual = title.attribute(.foregroundColor, at: reading.location, effectiveRange: nil) as! NSColor
+                            let expected: NSColor = !enabled || (value ?? 0) < 60 ? .labelColor : ((value ?? 0) < 80 ? .systemOrange : .systemRed)
+                            assert(actual == expected, "Wrong reading color for \(style), \(String(describing: value)), usageColors=\(enabled)")
+                            if style == .meters, let value, value >= 60 {
+                                var meter: NSImage?
+                                title.enumerateAttribute(.attachment, in: NSRange(location: 0, length: title.length)) { attachment, _, stop in
+                                    if let image = (attachment as? NSTextAttachment)?.image {
+                                        meter = image
+                                        stop.pointee = true
+                                    }
+                                }
+                                let cg = meter!.cgImage(forProposedRect: nil, context: nil, hints: nil)!
+                                let pixel = NSBitmapImageRep(cgImage: cg).colorAt(x: 2, y: 6)!.usingColorSpace(.deviceRGB)!
+                                // Render the reference swatch through the same AppKit color space.
+                                let swatch = NSImage(size: NSSize(width: 4, height: 12), flipped: false) { rect in
+                                    expected.setFill()
+                                    rect.fill()
+                                    return true
+                                }
+                                let reference = swatch.cgImage(forProposedRect: nil, context: nil, hints: nil)!
+                                let expectedRGB = NSBitmapImageRep(cgImage: reference).colorAt(x: 2, y: 6)!.usingColorSpace(.deviceRGB)!
+                                assert(abs(pixel.redComponent - expectedRGB.redComponent) < 0.05 &&
+                                       abs(pixel.greenComponent - expectedRGB.greenComponent) < 0.05 &&
+                                       abs(pixel.blueComponent - expectedRGB.blueComponent) < 0.05,
+                                       "Micro-meter fills must follow the same color preference as percentages")
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         for style in MenuBarStyle.allCases {
             let title = MenuBarRenderer.title(cpu: 10, ram: 39, gpu: 4, style: style)

@@ -19,7 +19,7 @@ struct MetersApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        // The status item owns the monitoring UI; Settings opens one reusable window.
+        // Route the standard Settings command to customization in the status popover.
         Settings { EmptyView() }
             .commands {
                 CommandGroup(replacing: .appSettings) {
@@ -200,12 +200,11 @@ final class SystemMonitor: ObservableObject {
 // MARK: - App delegate (status item, popover, settings)
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private let monitor = SystemMonitor()
-    private var settingsWindow: NSWindow?
-    private var visibleLayout: PopoverLayout = .grouped
+    private let presentation = PopoverPresentation()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
@@ -217,8 +216,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePopover(_:))
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: StatsView(monitor: monitor) { [weak self] in
-            self?.showSettings()
+        popover.delegate = self
+        popover.contentViewController = NSHostingController(rootView: StatsView(monitor: monitor, presentation: presentation) { [weak self] size in
+            // Apply after SwiftUI finishes its measurement pass.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, abs(self.popover.contentSize.height - size.height) > 0.5 else { return }
+                self.popover.contentSize = size
+            }
         })
         monitor.onUpdate = { [weak self] in self?.renderTitle() }
         NotificationCenter.default.addObserver(
@@ -226,49 +230,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.preferencesChanged() }
         }
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateAvailableHeight() }
+        }
         preferencesChanged()
     }
 
     @objc private func togglePopover(_ sender: AnyObject?) {
-        guard let button = statusItem.button else { return }
         if popover.isShown { popover.performClose(sender) }
-        else {
-            NSApp.activate(ignoringOtherApps: true)
+        else { showPopover() }
+    }
+
+    private func showPopover() {
+        guard let button = statusItem.button else { return }
+        updateAvailableHeight()
+        NSApp.activate(ignoringOtherApps: true)
+        if !popover.isShown {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
     }
 
-    private func preferencesChanged() {
-        renderTitle()
-        let layout = PopoverLayout(rawValue: UserDefaults.standard.string(forKey: Prefs.popoverLayoutKey) ?? "") ?? .grouped
-        if layout != visibleLayout {
-            visibleLayout = layout
-            popover.contentSize = NSSize(width: 316, height: StatsView.height(for: layout))
-        }
+    private func updateAvailableHeight() {
+        let screen = statusItem.button?.window?.screen ?? NSScreen.main
+        // Leave room for the arrow and a small margin above the Dock.
+        presentation.maximumHeight = max(1, (screen?.visibleFrame.height ?? 800) - 24)
     }
+
+    private func preferencesChanged() { renderTitle() }
+
+    func popoverDidClose(_ notification: Notification) { presentation.reset() }
 
     private func renderTitle() {
         let style = MenuBarStyle(rawValue: UserDefaults.standard.string(forKey: Prefs.menuBarStyleKey) ?? "") ?? .text
         guard let button = statusItem.button else { return }
-        button.attributedTitle = MenuBarRenderer.title(cpu: monitor.cpu, ram: monitor.ram, gpu: monitor.gpu, style: style)
+        button.attributedTitle = MenuBarRenderer.title(cpu: monitor.cpu, ram: monitor.ram, gpu: monitor.gpu, style: style,
+                                                     usageColors: UserDefaults.standard.bool(forKey: Prefs.usageColorsKey))
         button.setAccessibilityLabel("Meters")
         button.setAccessibilityValue("CPU \(MenuBarPresentation.percent(monitor.cpu)), GPU \(MenuBarPresentation.percent(monitor.gpu)), memory \(MenuBarPresentation.percent(monitor.ram))")
         button.toolTip = "Meters — CPU, GPU and memory usage"
     }
 
     func showSettings() {
-        popover.performClose(nil)
-        if settingsWindow == nil {
-            let controller = NSHostingController(rootView: AppearanceSettingsView())
-            let window = NSWindow(contentViewController: controller)
-            window.title = "Meters Settings"
-            window.styleMask = [.titled, .closable, .miniaturizable]
-            window.isReleasedWhenClosed = false
-            window.delegate = self
-            window.center()
-            settingsWindow = window
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        presentation.openCustomization()
+        showPopover()
     }
 }

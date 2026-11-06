@@ -7,124 +7,92 @@ struct AppearanceSettingsView: View {
     @State private var loginStatus = SMAppService.mainApp.status
     @State private var loginError: String?
 
+    @AppStorage(Prefs.usageColorsKey) private var usageColors = true
+    var onDone: () -> Void = {}
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Appearance").font(.system(size: 24, weight: .bold))
-                    Text("Choose how Meters looks in your menu bar and popover.")
-                        .foregroundStyle(.secondary)
-                }
-
-                settingsGroup("Popover layout") {
-                    Picker("Popover layout", selection: $layout) {
-                        ForEach(PopoverLayout.allCases) { option in
-                            optionLabel(option.title, detail: option.detail).tag(option)
-                        }
-                    }
-                    .pickerStyle(.radioGroup)
-                    .labelsHidden()
-                }
-
-                settingsGroup("Menu bar style") {
-                    Picker("Menu bar style", selection: $menuStyle) {
-                        ForEach(MenuBarStyle.allCases) { option in
-                            optionLabel(option.title, detail: option.detail).tag(option)
-                        }
-                    }
-                    .pickerStyle(.radioGroup)
-                    .labelsHidden()
-
-                    Divider().padding(.vertical, 6)
-                    menuPreview
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 4)
-                        .accessibilityLabel("Menu bar style preview")
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Launch at login")
-                        Spacer()
-                        Toggle("Launch at login", isOn: Binding(
-                            get: { loginStatus == .enabled || loginStatus == .requiresApproval },
-                            set: setLaunchAtLogin
-                        ))
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                    }
-
-                    if loginStatus == .requiresApproval {
-                        Text("Allow Meters in System Settings → General → Login Items.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Button("Open Login Items Settings…") {
-                            SMAppService.openSystemSettingsLoginItems()
-                        }
-                    }
-                    if let loginError {
-                        Text(loginError).font(.caption).foregroundStyle(.red)
-                    }
-                }
-
-                Text("Changes apply immediately. Appearance follows macOS.")
-                    .font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Customize").fontWeight(.semibold)
+                Spacer()
+                Button("Done", action: onDone)
+                    .buttonStyle(.borderless)
+                    .accessibilityHint("Collapse customization and return to monitoring")
             }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            settingsRow("Panel layout") {
+                Picker("Panel layout", selection: $layout) {
+                    Text("Grouped").tag(PopoverLayout.grouped)
+                    Text("Compact").tag(PopoverLayout.compact)
+                    Text("Activity Monitor").tag(PopoverLayout.activity)
+                }
+            }
+            settingsRow("Menu bar style") {
+                Picker("Menu bar style", selection: $menuStyle) {
+                    Text("Text").tag(MenuBarStyle.text)
+                    Text("Symbols").tag(MenuBarStyle.symbols)
+                    Text("Micro meters").tag(MenuBarStyle.meters)
+                }
+            }
+
+            Divider()
+            VStack(alignment: .leading, spacing: 5) {
+                settingsToggle("Color readings by usage", isOn: $usageColors)
+                Text("Orange at 60% · Red at 80%\nOff uses the standard text color.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                settingsToggle("Launch at login", isOn: Binding(
+                    get: { loginStatus == .enabled || loginStatus == .requiresApproval },
+                    set: setLaunchAtLogin
+                ))
+
+                if loginStatus == .requiresApproval {
+                    Text("Allow Meters in System Settings → General → Login Items.")
+                        .foregroundStyle(.secondary)
+                    Button("Open Login Items Settings…") {
+                        SMAppService.openSystemSettingsLoginItems()
+                    }
+                }
+                if let loginError {
+                    Text(loginError).foregroundStyle(.red)
+                }
+            }
+            Text("Changes apply immediately.")
+                .font(.system(size: 10)).foregroundStyle(.secondary)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .frame(width: 560, height: min(690, (NSScreen.main?.visibleFrame.height ?? 850) - 100))
+        .font(.system(size: 11))
+        .controlSize(.small)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 9))
+        .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(.primary.opacity(0.08)) }
+        .onAppear { loginStatus = SMAppService.mainApp.status }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             loginStatus = SMAppService.mainApp.status
         }
     }
 
-    private func optionLabel(_ title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+    private func settingsRow<Control: View>(_ title: String, @ViewBuilder control: () -> Control) -> some View {
+        HStack {
             Text(title)
-            Text(detail).font(.caption).foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 5)
-    }
-
-    private func settingsGroup<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline)
-            VStack(alignment: .leading, spacing: 4, content: content)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
-                .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
+            Spacer(minLength: 6)
+            control()
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(width: 145, alignment: .trailing)
         }
     }
 
-    private var menuPreview: some View {
-        HStack(spacing: 16) {
-            previewMetric("CPU", symbol: "cpu", value: 10)
-            previewMetric("GPU", symbol: "display", value: 4)
-            previewMetric("RAM", symbol: "memorychip", value: 39)
+    private func settingsToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        HStack {
+            Text(title)
+            Spacer(minLength: 8)
+            Toggle(title, isOn: isOn).labelsHidden().toggleStyle(.switch)
         }
-    }
-
-    private func previewMetric(_ title: String, symbol: String, value: Double) -> some View {
-        HStack(spacing: 4) {
-            if menuStyle == .symbols {
-                Image(systemName: symbol)
-                    .font(.system(size: MenuBarRenderer.symbolHeight, weight: .regular))
-                    .foregroundStyle(.primary)
-            } else {
-                Text(title).foregroundStyle(.secondary)
-            }
-            if menuStyle == .meters {
-                ZStack(alignment: .bottom) {
-                    Capsule().fill(.primary.opacity(0.12))
-                    Capsule().fill(.primary).frame(height: max(1, 12 * value / 100))
-                }
-                .frame(width: 3, height: 12)
-            }
-            Text("\(Int(value))%").monospacedDigit()
-        }
-        .font(Font(NSFont.menuBarFont(ofSize: 0)))
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
