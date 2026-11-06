@@ -20,8 +20,6 @@
   <img src="docs/images/hero.png" alt="Meters with the Compact popover in light appearance and Activity Monitor layout in dark appearance" width="1100">
 </p>
 
-> **Next-release preview:** These images show the current source build. The new layouts and inline customization are not released yet; [build from source](#build-from-source) to try them now.
-
 ## See what your Mac is doing
 
 Keep an eye on your Mac while compiling, rendering, or running local models. Meters puts live CPU, GPU and RAM percentages in the menu bar. Click once for a closer look at core activity, memory usage, thermals, and up to two minutes of history.

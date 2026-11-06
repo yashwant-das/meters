@@ -44,4 +44,4 @@ Keep Meters native to macOS while letting users see appearance changes immediate
 
 No monitoring calculations, graph palette, token tracking, or release changes. Figma synchronization is deferred until after release. Prompt the user before updating it with all recent changes.
 
-Status: approved and implemented locally on 2026-11-07; validated in light/dark appearance, native controls, tests, and Debug/Release builds. Not released.
+Status: approved and implemented locally on 2026-11-07; validated in light/dark appearance, native controls, tests, and Debug/Release builds.

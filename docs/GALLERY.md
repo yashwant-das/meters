@@ -2,7 +2,7 @@
 
 [← Back to Meters](../README.md)
 
-Native SwiftUI and AppKit views from the current source, rendered with illustrative data. These images preview the next release. Rounded framing and hero composition are documentation artwork; popover materials depend on the desktop behind them.
+Native SwiftUI and AppKit views from the current source, rendered with illustrative data. Rounded framing and hero composition are documentation artwork; popover materials depend on the desktop behind them.
 
 The three panel layouts and three menu bar styles combine independently, giving nine configurations. Both macOS appearances are shown below. Click an image to inspect it at full size.
 
@@ -116,4 +116,4 @@ Set `METERS_DOCS_DERIVED_DATA` if your Release build uses another derived-data d
 
 Expanded-detail captures use a temporary copy of `StatsView.swift` with its two disclosure defaults set to expanded. Product source and layout remain unchanged. A separate temporary app bundle supplies the compiled color assets. Capture preferences use isolated suites and are cleared after rendering.
 
-Review the regenerated images and the README in both light and dark appearance before committing. Keep the next-release notice until these UI changes are published, then remove it from both documents. Figma synchronization is separate and remains deferred until after release and user approval.
+Review the regenerated images and the README in both light and dark appearance before committing. Regenerate images whenever the UI changes. Figma synchronization is separate and remains deferred until after release and user approval.

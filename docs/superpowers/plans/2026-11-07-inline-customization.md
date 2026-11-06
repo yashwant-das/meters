@@ -57,7 +57,7 @@
 - [x] Review the full diff against the spec and document validation/limitations. Leave changes ready for review; no automatic push.
 
 
-## Results
+## Implementation validation before publication
 
 - Standalone appearance tests pass: default-on migration, explicit opt-out, all styles/appearances, boundary and unavailable values, stable widths, and rendered micro-meter fills.
 - Monitoring data and popover presentation tests pass. Presentation regression covers repeated Customize requests while already expanded.
