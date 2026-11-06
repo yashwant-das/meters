@@ -247,8 +247,37 @@ struct DocumentationCapture {
             text("at home in your menu bar.", x: 56, y: 283, size: 23, color: NSColor(white: 0.35, alpha: 1))
             text("Native macOS app · Free & open source", x: 56, y: 76, size: 14, weight: .medium, color: NSColor(white: 0.4, alpha: 1))
             let scale: CGFloat = 0.82
-            panel(dark, rect: NSRect(x: 786, y: 94, width: dark.size.width * scale, height: dark.size.height * scale), dark: true)
-            panel(light, rect: NSRect(x: 507, y: 164, width: light.size.width * scale, height: light.size.height * scale), dark: false)
+            let darkPanel = NSRect(x: 786, y: 94, width: dark.size.width * scale, height: dark.size.height * scale)
+            let lightPanel = NSRect(x: 507, y: 164, width: light.size.width * scale, height: light.size.height * scale)
+            panel(dark, rect: darkPanel, dark: true)
+            heroMenuBar(above: darkPanel, dark: true, scale: scale)
+            panel(light, rect: lightPanel, dark: false)
+            heroMenuBar(above: lightPanel, dark: false, scale: scale)
+        }
+    }
+
+    /// Show the product's primary surface, anchored to each popover's arrow.
+    /// Draw the production attributed title so the typeface and metric order match the app.
+    @MainActor private static func heroMenuBar(above panel: NSRect, dark: Bool, scale: CGFloat) {
+        let bar = NSRect(x: panel.minX - 4, y: panel.maxY + 11, width: panel.width + 8, height: 27)
+        NSAppearance(named: dark ? .darkAqua : .aqua)!.performAsCurrentDrawingAppearance {
+            let shape = NSBezierPath(roundedRect: bar, xRadius: 7, yRadius: 7)
+            NSColor(white: dark ? 0.16 : 1, alpha: 1).setFill()
+            shape.fill()
+            NSColor(white: dark ? 1 : 0, alpha: 0.12).setStroke()
+            shape.lineWidth = 0.5
+            shape.stroke()
+
+            let title = MenuBarRenderer.title(cpu: 24, ram: 56, gpu: 18, style: .text)
+            let titleSize = title.size()
+            NSGraphicsContext.saveGraphicsState()
+            let transform = NSAffineTransform()
+            transform.translateX(by: bar.midX - titleSize.width * scale / 2,
+                                 yBy: bar.midY - titleSize.height * scale / 2)
+            transform.scale(by: scale)
+            transform.concat()
+            title.draw(at: .zero)
+            NSGraphicsContext.restoreGraphicsState()
         }
     }
 
