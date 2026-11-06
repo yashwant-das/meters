@@ -1,6 +1,14 @@
 import SwiftUI
 import Charts
 
+/// Series colors identify metrics; they do not signal load or memory pressure.
+/// Asset variants stay legible in light/dark appearance. Secondary series also use dashes.
+private enum MetricPalette {
+    static let blue = Color("MetricBlue")
+    static let teal = Color("MetricTeal")
+    static let purple = Color("MetricPurple")
+}
+
 struct StatsView: View {
     @ObservedObject var monitor: SystemMonitor
     var openSettings: () -> Void
@@ -84,8 +92,8 @@ struct StatsView: View {
             else { MetricHeader(title: "GPU", symbol: "display", value: monitor.gpu) }
             if layout == .grouped { gpuLegend }
             HistoryChart(series: [
-                .init(name: "GPU", values: monitor.gpuHistory, tint: .blue),
-                .init(name: "GPU memory", values: monitor.gpuMemoryHistory, tint: .teal)
+                .init(name: "GPU", values: monitor.gpuHistory, tint: MetricPalette.blue),
+                .init(name: "GPU memory", values: monitor.gpuMemoryHistory, tint: MetricPalette.purple, dashed: true)
             ], times: monitor.historyTimes, height: chartHeight, label: "GPU usage and memory history")
             if layout != .compact { historyAxis }
             if layout != .grouped { gpuLegend }
@@ -96,24 +104,24 @@ struct StatsView: View {
 
     private var cpuSeries: [HistoryChart.Series] {
         if monitor.efficiencyCPU == nil && monitor.performanceCPU == nil {
-            return [.init(name: "CPU", values: monitor.cpuHistory, tint: .blue)]
+            return [.init(name: "CPU", values: monitor.cpuHistory, tint: MetricPalette.blue)]
         }
         return [
-            .init(name: "Efficiency", values: monitor.efficiencyHistory, tint: .orange),
-            .init(name: "Performance", values: monitor.performanceHistory, tint: .blue)
+            .init(name: "Efficiency", values: monitor.efficiencyHistory, tint: MetricPalette.teal),
+            .init(name: "Performance", values: monitor.performanceHistory, tint: MetricPalette.blue, dashed: true)
         ]
     }
 
     private var cpuLegend: some View {
         HStack {
             if monitor.efficiencyCPU == nil && monitor.performanceCPU == nil {
-                SeriesKey(title: "CPU", value: percent(monitor.cpu), tint: .blue)
+                SeriesKey(title: "CPU", value: percent(monitor.cpu), tint: MetricPalette.blue)
                 Spacer(minLength: 0)
                 Text("Core split unavailable").font(.system(size: 10)).foregroundStyle(.secondary)
             } else {
-                SeriesKey(title: "Efficiency", value: percent(monitor.efficiencyCPU), tint: .orange)
+                SeriesKey(title: "Efficiency", value: percent(monitor.efficiencyCPU), tint: MetricPalette.teal)
                 Spacer(minLength: 4)
-                SeriesKey(title: "Performance", value: percent(monitor.performanceCPU), tint: .blue)
+                SeriesKey(title: "Performance", value: percent(monitor.performanceCPU), tint: MetricPalette.blue, dashed: true)
             }
         }
         .help("Average utilization within each core group; the CPU total is weighted across all cores")
@@ -121,9 +129,9 @@ struct StatsView: View {
 
     private var gpuLegend: some View {
         HStack {
-            SeriesKey(title: "GPU", value: nil, tint: .blue)
+            SeriesKey(title: "GPU", value: nil, tint: MetricPalette.blue)
             Spacer(minLength: 4)
-            SeriesKey(title: "Memory", value: monitor.gpuMemoryGB.map { String(format: "%.2f GB", $0) } ?? "N/A", tint: .teal)
+            SeriesKey(title: "Memory", value: monitor.gpuMemoryGB.map { String(format: "%.2f GB", $0) } ?? "N/A", tint: MetricPalette.purple, dashed: true)
         }
         .help("GPU memory overlaps system memory. Its graph shows a share of total system memory, not dedicated VRAM.")
     }
@@ -134,7 +142,7 @@ struct StatsView: View {
             Spacer()
             Text("Now")
         }
-        .font(.system(size: 9)).foregroundStyle(.tertiary)
+        .font(.system(size: 9)).foregroundStyle(.secondary)
     }
 
     private var historyStart: String {
@@ -197,9 +205,9 @@ struct StatsView: View {
 
     private var memoryDetails: some View {
         VStack(spacing: 6) {
-            memoryRow("Wired", bytes: monitor.memory?.wiredBytes, tint: .blue)
-            memoryRow("Active", bytes: monitor.memory?.activeBytes, tint: .green)
-            memoryRow("Compressed", bytes: monitor.memory?.compressedBytes, tint: .purple)
+            memoryRow("Wired", bytes: monitor.memory?.wiredBytes, tint: MetricPalette.blue)
+            memoryRow("Active", bytes: monitor.memory?.activeBytes, tint: MetricPalette.teal)
+            memoryRow("Compressed", bytes: monitor.memory?.compressedBytes, tint: MetricPalette.purple)
             memoryRow("Available", bytes: monitor.memory?.freeBytes, tint: .gray)
                 .help("Includes reclaimable cache; this is not just the kernel’s free-page count")
         }
@@ -207,7 +215,7 @@ struct StatsView: View {
 
     private func memoryRow(_ title: String, bytes: Double?, tint: Color) -> some View {
         HStack(spacing: 5) {
-            Circle().fill(tint.opacity(0.8)).frame(width: 4, height: 4)
+            Circle().fill(tint).frame(width: 4, height: 4)
             DetailRow(title: title, value: bytes.map { String(format: "%.1f GB", $0 / 1_073_741_824) } ?? "N/A")
         }
     }
@@ -306,10 +314,16 @@ private struct SeriesKey: View {
     let title: String
     let value: String?
     let tint: Color
+    var dashed = false
 
     var body: some View {
-        HStack(spacing: 3) {
-            Circle().fill(tint).frame(width: 4, height: 4)
+        HStack(spacing: 4) {
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: 3))
+                path.addLine(to: CGPoint(x: 14, y: 3))
+            }
+            .stroke(tint, style: StrokeStyle(lineWidth: 2, dash: dashed ? [3, 2] : []))
+            .frame(width: 14, height: 6)
             Text(value.map { "\(title) \($0)" } ?? title).monospacedDigit()
         }
         .font(.system(size: 9)).foregroundStyle(.secondary)
@@ -341,9 +355,9 @@ private struct MemoryBar: View {
                 Capsule().fill(.primary.opacity(0.07))
                 if let memory, memory.totalBytes > 0 {
                     HStack(spacing: 0) {
-                        Rectangle().fill(.blue).frame(width: width(memory.wiredBytes, in: geometry))
-                        Rectangle().fill(.green.opacity(0.8)).frame(width: width(memory.activeBytes, in: geometry))
-                        Rectangle().fill(.purple).frame(width: width(memory.compressedBytes, in: geometry))
+                        Rectangle().fill(MetricPalette.blue).frame(width: width(memory.wiredBytes, in: geometry))
+                        Rectangle().fill(MetricPalette.teal).frame(width: width(memory.activeBytes, in: geometry))
+                        Rectangle().fill(MetricPalette.purple).frame(width: width(memory.compressedBytes, in: geometry))
                     }
                 }
             }
@@ -363,6 +377,7 @@ private struct HistoryChart: View {
         let name: String
         let values: [Double?]
         let tint: Color
+        var dashed = false
     }
     let series: [Series]
     let times: [TimeInterval]
@@ -385,7 +400,7 @@ private struct HistoryChart: View {
                         LineMark(x: .value("Time", time), y: .value("Usage", value),
                                  series: .value("Metric", seriesID))
                             .foregroundStyle(item.tint)
-                            .lineStyle(StrokeStyle(lineWidth: 1.4))
+                            .lineStyle(StrokeStyle(lineWidth: 1.8, dash: item.dashed ? [4, 3] : []))
                             .interpolationMethod(.monotone)
                         if item.values.count == 1 {
                             PointMark(x: .value("Time", time), y: .value("Usage", value))
@@ -400,7 +415,7 @@ private struct HistoryChart: View {
         .chartXAxis(.hidden)
         .chartYAxis {
             AxisMarks(values: [0, 50, 100]) {
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(.primary.opacity(0.07))
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(.primary.opacity(0.12))
             }
         }
         .frame(height: height)

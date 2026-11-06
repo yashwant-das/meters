@@ -54,6 +54,8 @@ These colors apply with both text and icon labels. Labels and icons keep their u
 
 Micro-meter fills also use the usage colors. All styles reserve space for three-digit readings, so `0%`, `100%` and unavailable readings keep the menu bar steady. Existing users who enabled icon labels keep the compact-symbol style when updating.
 
+Graph colors identify series independently of the usage thresholds above. CPU efficiency is teal (solid), performance is blue (dashed), and an unsplit CPU total is blue (solid). GPU utilization is blue (solid); GPU memory is purple (dashed). Legends repeat the line patterns so overlapping series can be distinguished without color alone. Memory categories use blue for wired, teal for active, purple for compressed, and neutral gray for available. These category colors do not indicate memory pressure. The palette has separate light and dark variants; orange/red remain status indicators for menu bar usage and thermal state.
+
 ### Appearance settings
 
 Click **Settings…** at the bottom of any popover, or press **⌘,** while Meters is active. The popover layout and menu bar style are separate choices. In the compact layout, expand **Memory breakdown** or **System details** for the full statistics; the panel scrolls when needed. **Launch at login** lives in the same settings window and reports if macOS needs approval in Login Items.
@@ -128,13 +130,13 @@ swiftc meters/AppearancePreferences.swift meters/MenuBarRenderer.swift tests/App
 /tmp/meters-appearance-tests
 ```
 
+## Roadmap
+
+See the [roadmap](ROADMAP.md) for planned features, including **live oMLX token tracking** and a later **Ollama integration**, plus network/disk activity, menu bar metric selection, and refresh controls.
+
 ## Contributing
 
-Issues and pull requests are welcome. Ideas that would be nice to have:
-
-- Network and disk activity
-- Choose which metrics appear in the menu bar
-- Custom refresh interval
+Issues and pull requests are welcome.
 
 ## License
 
