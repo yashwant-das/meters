@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/hero.png" alt="Meters with the Compact popover in light appearance and Activity Monitor layout in dark appearance" width="1100">
+  <img src="docs/images/hero.png" alt="Native CPU, GPU and RAM menu bar readings above the Compact popover in light appearance and Activity Monitor layout in dark appearance" width="1100">
 </p>
 
 ## See what your Mac is doing
