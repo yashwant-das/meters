@@ -1,0 +1,502 @@
+import SwiftUI
+import Charts
+
+/// Series colors identify metrics; they do not signal load or memory pressure.
+/// Asset variants stay legible in light/dark appearance. Secondary series also use dashes.
+private enum MetricPalette {
+    static let blue = Color("MetricBlue")
+    static let teal = Color("MetricTeal")
+    static let purple = Color("MetricPurple")
+}
+
+struct StatsView: View {
+    @ObservedObject var monitor: SystemMonitor
+    @ObservedObject var presentation: PopoverPresentation
+    var onSizeChange: (CGSize) -> Void = { _ in }
+    @State private var measuredHeights: [String: CGFloat] = [:]
+    @AppStorage(Prefs.popoverLayoutKey) private var layout: PopoverLayout = .grouped
+    @State private var memoryExpanded = false
+    @State private var systemExpanded = false
+
+    private var chromeHeight: CGFloat {
+        (measuredHeights["header"] ?? 42) + (measuredHeights["footer"] ?? 42)
+    }
+
+    private var panelHeight: CGFloat {
+        PopoverSizing.height(content: measuredHeights["content"] ?? 450,
+                            chrome: chromeHeight, available: presentation.maximumHeight)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 12).padding(.bottom, 10)
+                .measurePanelHeight("header")
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if presentation.customizing {
+                            AppearanceSettingsView { presentation.customizing = false }
+                                .id("customize")
+                        }
+                        dashboard
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .measurePanelHeight("content")
+                }
+                .scrollIndicators(.automatic)
+                .frame(height: max(0, panelHeight - chromeHeight))
+                .onChange(of: presentation.customizationRequest) { _, _ in
+                    proxy.scrollTo("customize", anchor: .top)
+                }
+            }
+
+            footer
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+                .measurePanelHeight("footer")
+        }
+        .frame(width: 316, height: panelHeight)
+        .onPreferenceChange(PanelHeightPreference.self) { heights in
+            if measuredHeights != heights { measuredHeights = heights }
+        }
+        .onChange(of: panelHeight, initial: true) { _, height in
+            onSizeChange(CGSize(width: 316, height: height))
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text("Meters").font(.system(size: 13, weight: .semibold))
+            Spacer()
+            HStack(spacing: 4) {
+                Circle().fill(.green).frame(width: 4, height: 4)
+                Text("Live").font(.system(size: 10))
+            }
+            .foregroundStyle(.secondary)
+            .help("Updates every 2 seconds")
+            Button {
+                if presentation.customizing { presentation.customizing = false }
+                else { presentation.openCustomization() }
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 12))
+                    .padding(4)
+                    .background(presentation.customizing ? Color.primary.opacity(0.08) : .clear,
+                                in: RoundedRectangle(cornerRadius: 5))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Customize Meters")
+            .accessibilityValue(presentation.customizing ? "Expanded" : "Collapsed")
+            .help("Customize Meters")
+        }
+    }
+
+    private var dashboard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if layout == .activity { overview }
+            metricSection { cpuContent }
+            if layout != .grouped { Divider() }
+            metricSection { gpuContent }
+            if layout != .grouped { Divider() }
+            metricSection { memoryContent }
+
+            if layout == .compact {
+                Divider()
+                thermalRow
+                DisclosureGroup("System details", isExpanded: $systemExpanded) {
+                    systemDetails.padding(.top, 6)
+                }
+                .font(.caption)
+                .tint(.secondary)
+            } else {
+                thermalRow
+                systemDetails
+            }
+        }
+    }
+
+    private func metricSection<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8, content: content)
+            .padding(layout == .grouped ? 12 : 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                if layout == .grouped {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.65))
+                }
+            }
+    }
+
+    private var cpuContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if layout == .activity { chartHeading("CPU history") }
+            else { MetricHeader(title: "CPU", symbol: "cpu", value: monitor.cpu) }
+            if layout == .grouped { cpuLegend }
+            HistoryChart(series: cpuSeries, times: monitor.historyTimes, height: chartHeight, label: "CPU usage history")
+            if layout != .compact { historyAxis }
+            if layout != .grouped { cpuLegend }
+        }
+    }
+
+    private var gpuContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if layout == .activity { chartHeading("GPU history") }
+            else { MetricHeader(title: "GPU", symbol: "display", value: monitor.gpu) }
+            if layout == .grouped { gpuLegend }
+            HistoryChart(series: [
+                .init(name: "GPU", values: monitor.gpuHistory, tint: MetricPalette.blue),
+                .init(name: "GPU memory", values: monitor.gpuMemoryHistory, tint: MetricPalette.purple, dashed: true)
+            ], times: monitor.historyTimes, height: chartHeight, label: "GPU usage and memory history")
+            if layout != .compact { historyAxis }
+            if layout != .grouped { gpuLegend }
+        }
+    }
+
+    private var chartHeight: CGFloat { layout == .compact ? 34 : 48 }
+
+    private var cpuSeries: [HistoryChart.Series] {
+        if monitor.efficiencyCPU == nil && monitor.performanceCPU == nil {
+            return [.init(name: "CPU", values: monitor.cpuHistory, tint: MetricPalette.blue)]
+        }
+        return [
+            .init(name: "Efficiency", values: monitor.efficiencyHistory, tint: MetricPalette.teal),
+            .init(name: "Performance", values: monitor.performanceHistory, tint: MetricPalette.blue, dashed: true)
+        ]
+    }
+
+    private var cpuLegend: some View {
+        HStack {
+            if monitor.efficiencyCPU == nil && monitor.performanceCPU == nil {
+                SeriesKey(title: "CPU", value: percent(monitor.cpu), tint: MetricPalette.blue)
+                Spacer(minLength: 0)
+                Text("Core split unavailable").font(.system(size: 10)).foregroundStyle(.secondary)
+            } else {
+                SeriesKey(title: "Efficiency", value: percent(monitor.efficiencyCPU), tint: MetricPalette.teal)
+                Spacer(minLength: 4)
+                SeriesKey(title: "Performance", value: percent(monitor.performanceCPU), tint: MetricPalette.blue, dashed: true)
+            }
+        }
+        .help("Average utilization within each core group; the CPU total is weighted across all cores")
+    }
+
+    private var gpuLegend: some View {
+        HStack {
+            SeriesKey(title: "GPU", value: nil, tint: MetricPalette.blue)
+            Spacer(minLength: 4)
+            SeriesKey(title: "Memory", value: monitor.gpuMemoryGB.map { String(format: "%.2f GB", $0) } ?? "N/A", tint: MetricPalette.purple, dashed: true)
+        }
+        .help("GPU memory overlaps system memory. Its graph shows a share of total system memory, not dedicated VRAM.")
+    }
+
+    private var historyAxis: some View {
+        HStack {
+            Text(monitor.historySeconds < 2 ? "Collecting history…" : historyStart)
+            Spacer()
+            Text("Now")
+        }
+        .font(.system(size: 9)).foregroundStyle(.secondary)
+    }
+
+    private var historyStart: String {
+        let seconds = monitor.historySeconds
+        return seconds < 60 ? "\(seconds)s ago" : "\(seconds / 60)m \(seconds % 60)s ago"
+    }
+
+    private func chartHeading(_ title: String) -> some View {
+        HStack {
+            Text(title).font(.system(size: 11, weight: .semibold))
+            Spacer()
+            Text("0–100%").font(.system(size: 10)).foregroundStyle(.secondary)
+        }
+    }
+
+    private var overview: some View {
+        HStack(spacing: 0) {
+            overviewReading("CPU", value: monitor.cpu)
+            Divider().frame(height: 32)
+            overviewReading("GPU", value: monitor.gpu)
+            Divider().frame(height: 32)
+            overviewReading("Memory", value: monitor.memory?.percent)
+        }
+        .padding(.vertical, 10)
+        .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 9))
+    }
+
+    private func overviewReading(_ title: String, value: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).font(.system(size: 10)).foregroundStyle(.secondary)
+            Text(percent(value)).font(.system(size: 21, weight: .semibold)).monospacedDigit()
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var memoryContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if layout == .activity {
+                DetailRow(title: "Memory", value: percent(monitor.memory?.percent))
+                    .fontWeight(.semibold)
+            } else { MetricHeader(title: "Memory", symbol: "memorychip", value: monitor.memory?.percent) }
+            HStack {
+                Text(monitor.memory == nil ? "N/A" : String(format: "%.1f GB used", monitor.ramUsedGB))
+                Spacer()
+                Text(String(format: "%.0f GB total", monitor.ramTotalGB))
+            }
+            .font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit()
+            MemoryBar(memory: monitor.memory)
+                .accessibilityLabel("Memory used")
+                .accessibilityValue(percent(monitor.memory?.percent))
+            if layout == .compact {
+                DisclosureGroup("Memory breakdown", isExpanded: $memoryExpanded) {
+                    memoryDetails.padding(.top, 6)
+                }
+                .font(.caption).tint(.secondary)
+            } else { memoryDetails }
+        }
+    }
+
+    private var memoryDetails: some View {
+        VStack(spacing: 6) {
+            memoryRow("Wired", bytes: monitor.memory?.wiredBytes, tint: MetricPalette.blue)
+            memoryRow("Active", bytes: monitor.memory?.activeBytes, tint: MetricPalette.teal)
+            memoryRow("Compressed", bytes: monitor.memory?.compressedBytes, tint: MetricPalette.purple)
+            memoryRow("Available", bytes: monitor.memory?.freeBytes, tint: .gray)
+                .help("Includes reclaimable cache; this is not just the kernel’s free-page count")
+        }
+    }
+
+    private func memoryRow(_ title: String, bytes: Double?, tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(tint).frame(width: 4, height: 4)
+            DetailRow(title: title, value: bytes.map { String(format: "%.1f GB", $0 / 1_073_741_824) } ?? "N/A")
+        }
+    }
+
+    private var thermalRow: some View {
+        HStack {
+            Text("Thermal state").foregroundStyle(.secondary)
+            Spacer()
+            Text(thermalDescription).fontWeight(.medium)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .foregroundStyle(thermalTint)
+                .background(thermalTint.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+        }
+        .font(.system(size: 11))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var systemDetails: some View {
+        VStack(spacing: 8) {
+            DetailRow(title: "Load · 1 / 5 / 15 min", value: monitor.loadAverage.isEmpty ? "N/A" :
+                        monitor.loadAverage.map { String(format: "%.2f", $0) }.joined(separator: " · "))
+                .help("Average runnable tasks over 1, 5 and 15 minutes")
+            DetailRow(title: "Uptime", value: uptimeDescription)
+        }
+    }
+
+    private var footer: some View {
+        VStack(spacing: 10) {
+            Divider()
+            HStack {
+                Button { presentation.openCustomization() } label: {
+                    Text("Customize…")
+                }
+                    .keyboardShortcut(",", modifiers: .command)
+                Spacer()
+                Button { NSApp.terminate(nil) } label: {
+                    HStack(spacing: 8) { Text("Quit"); Text("⌘Q").foregroundStyle(.tertiary) }
+                }
+                .keyboardShortcut("q", modifiers: .command)
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+        }
+        .padding(.top, 2)
+    }
+
+    private func percent(_ value: Double?) -> String {
+        guard let fraction = MenuBarPresentation.fraction(value) else { return "N/A" }
+        return "\(Int((fraction * 100).rounded()))%"
+    }
+
+    private var thermalDescription: String {
+        switch monitor.thermalState {
+        case .nominal: return "Nominal"
+        case .fair: return "Fair"
+        case .serious: return "Serious"
+        case .critical: return "Critical"
+        @unknown default: return "Unknown"
+        }
+    }
+
+    private var thermalTint: Color {
+        switch monitor.thermalState {
+        case .nominal: return .green
+        case .fair: return .orange
+        case .serious, .critical: return .red
+        @unknown default: return .secondary
+        }
+    }
+
+    private var uptimeDescription: String {
+        let minutes = Int(monitor.uptime) / 60
+        let days = minutes / 1440
+        let hours = (minutes / 60) % 24
+        return (days > 0 ? "\(days)d " : "") + "\(hours)h \(minutes % 60)m"
+    }
+}
+
+private struct MetricHeader: View {
+    let title: String
+    let symbol: String
+    let value: Double?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 16)
+            Text(title).font(.system(size: 13, weight: .semibold))
+            Spacer()
+            Text(MenuBarPresentation.fraction(value).map { "\(Int(($0 * 100).rounded()))%" } ?? "N/A")
+                .font(.system(size: 22, weight: .semibold)).monospacedDigit()
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct SeriesKey: View {
+    let title: String
+    let value: String?
+    let tint: Color
+    var dashed = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: 3))
+                path.addLine(to: CGPoint(x: 14, y: 3))
+            }
+            .stroke(tint, style: StrokeStyle(lineWidth: 2, dash: dashed ? [3, 2] : []))
+            .frame(width: 14, height: 6)
+            Text(value.map { "\(title) \($0)" } ?? title).monospacedDigit()
+        }
+        .font(.system(size: 9)).foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct DetailRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(title).foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Text(value).monospacedDigit()
+        }
+        .font(.system(size: 11))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct MemoryBar: View {
+    let memory: MemoryBreakdown?
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.primary.opacity(0.07))
+                if let memory, memory.totalBytes > 0 {
+                    HStack(spacing: 0) {
+                        Rectangle().fill(MetricPalette.blue).frame(width: width(memory.wiredBytes, in: geometry))
+                        Rectangle().fill(MetricPalette.teal).frame(width: width(memory.activeBytes, in: geometry))
+                        Rectangle().fill(MetricPalette.purple).frame(width: width(memory.compressedBytes, in: geometry))
+                    }
+                }
+            }
+            .clipShape(Capsule())
+        }
+        .frame(height: 6)
+        .accessibilityElement(children: .ignore)
+    }
+
+    private func width(_ bytes: Double, in geometry: GeometryProxy) -> CGFloat {
+        geometry.size.width * min(1, max(0, bytes / (memory?.totalBytes ?? 1)))
+    }
+}
+
+private struct HistoryChart: View {
+    struct Series {
+        let name: String
+        let values: [Double?]
+        let tint: Color
+        var dashed = false
+    }
+    let series: [Series]
+    let times: [TimeInterval]
+    let height: CGFloat
+    let label: String
+
+    var body: some View {
+        Chart {
+            ForEach(series, id: \.name) { item in
+                ForEach(Array(item.values.enumerated()), id: \.offset) { index, value in
+                    if let value {
+                        let time = times.indices.contains(index) ? times[index] : Double(index) * 2
+                        let run = item.values[..<index].lastIndex(where: { $0 == nil }) ?? -1
+                        let seriesID = "\(item.name)-\(run)"
+                        AreaMark(x: .value("Time", time), y: .value("Usage", value),
+                                 series: .value("Metric", seriesID), stacking: .unstacked)
+                            .foregroundStyle(LinearGradient(colors: [item.tint.opacity(0.10), item.tint.opacity(0.01)],
+                                                            startPoint: .top, endPoint: .bottom))
+                            .interpolationMethod(.monotone)
+                        LineMark(x: .value("Time", time), y: .value("Usage", value),
+                                 series: .value("Metric", seriesID))
+                            .foregroundStyle(item.tint)
+                            .lineStyle(StrokeStyle(lineWidth: 1.8, dash: item.dashed ? [4, 3] : []))
+                            .interpolationMethod(.monotone)
+                        if item.values.count == 1 {
+                            PointMark(x: .value("Time", time), y: .value("Usage", value))
+                                .foregroundStyle(item.tint).symbolSize(8)
+                        }
+                    }
+                }
+            }
+        }
+        .chartXScale(domain: 0...max(1, times.last ?? 0))
+        .chartYScale(domain: 0...100)
+        .chartXAxis(.hidden)
+        .chartYAxis {
+            AxisMarks(values: [0, 50, 100]) {
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(.primary.opacity(0.12))
+            }
+        }
+        .frame(height: height)
+        .accessibilityLabel(label)
+    }
+}
+
+/// Measure intrinsic content independently of the capped scroll viewport.
+private struct PanelHeightPreference: PreferenceKey {
+    static var defaultValue: [String: CGFloat] { [:] }
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private extension View {
+    func measurePanelHeight(_ part: String) -> some View {
+        background {
+            GeometryReader { geometry in
+                Color.clear.preference(key: PanelHeightPreference.self, value: [part: geometry.size.height])
+            }
+        }
+    }
+}

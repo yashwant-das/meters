@@ -19,16 +19,15 @@ struct MetersApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        // No windows; everything lives in the menu bar.
+        // Route the standard Settings command to customization in the status popover.
         Settings { EmptyView() }
+            .commands {
+                CommandGroup(replacing: .appSettings) {
+                    Button("Settings…") { appDelegate.showSettings() }
+                        .keyboardShortcut(",", modifiers: .command)
+                }
+            }
     }
-}
-
-// MARK: - Preferences
-
-enum Prefs {
-    /// When true, the menu bar shows icons instead of "CPU", "RAM" and "GPU".
-    static let iconLabelsKey = "useIconLabels"
 }
 
 // MARK: - Monitor (samples CPU / RAM / GPU)
@@ -37,358 +36,244 @@ enum Prefs {
 final class SystemMonitor: ObservableObject {
     @Published private(set) var cpu: Double = 0
     @Published private(set) var ram: Double = 0
-    @Published private(set) var gpu: Double? = nil
-    @Published private(set) var ramUsedGB: Double = 0
-    @Published private(set) var ramTotalGB: Double = 0
+    @Published private(set) var gpu: Double?
+    @Published private(set) var efficiencyCPU: Double?
+    @Published private(set) var performanceCPU: Double?
+    @Published private(set) var memory: MemoryBreakdown?
+    @Published private(set) var gpuMemoryGB: Double?
+    @Published private(set) var loadAverage: [Double] = []
+    @Published private(set) var uptime: TimeInterval = 0
+    @Published private(set) var thermalState = ProcessInfo.processInfo.thermalState
+    @Published private(set) var cpuHistory: [Double?] = []
+    @Published private(set) var efficiencyHistory: [Double?] = []
+    @Published private(set) var performanceHistory: [Double?] = []
+    @Published private(set) var gpuHistory: [Double?] = []
+    @Published private(set) var gpuMemoryHistory: [Double?] = []
+    @Published private(set) var historySeconds = 0
+    @Published private(set) var historyTimes: [TimeInterval] = []
 
-    @Published private(set) var cpuHistory = [Double](repeating: 0, count: 60)
-    @Published private(set) var ramHistory = [Double](repeating: 0, count: 60)
-    @Published private(set) var gpuHistory = [Double](repeating: 0, count: 60)
-
-    /// Called after every sample so the menu bar title can refresh.
+    let ramTotalGB = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
+    var ramUsedGB: Double { (memory?.usedBytes ?? 0) / 1_073_741_824 }
     var onUpdate: (() -> Void)?
 
     private var timer: Timer?
-    private var previousTicks: (UInt32, UInt32, UInt32, UInt32)?
+    private var previousTicks: [UInt32] = []
+    private let coreGroups = SystemMonitor.readCoreGroups()
+    private var historyTimeline = HistoryTimeline()
+    private let interval: TimeInterval
 
     init(interval: TimeInterval = 2) {
-        ramTotalGB = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
-        _ = readCPU() // prime the delta
+        self.interval = interval
+        _ = readCPU()
         sample()
-
         let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-            guard let monitor = self else { return }
-            Task { @MainActor in monitor.sample() }
+            Task { @MainActor [weak self] in self?.sample() }
         }
-        RunLoop.main.add(t, forMode: .common) // keeps ticking while menus/popovers are open
+        RunLoop.main.add(t, forMode: .common)
         timer = t
     }
 
-    private func sample() {
-        cpu = readCPU()
-        let mem = readMemory()
-        ram = mem.percent
-        ramUsedGB = mem.usedGB
-        gpu = readGPU()
+    deinit { timer?.invalidate() }
 
-        cpuHistory = Array((cpuHistory + [cpu]).suffix(60))
-        ramHistory = Array((ramHistory + [ram]).suffix(60))
-        gpuHistory = Array((gpuHistory + [gpu ?? 0]).suffix(60))
+    private func sample() {
+        let usage = readCPU()
+        cpu = usage.total ?? cpu
+        efficiencyCPU = usage.efficiency
+        performanceCPU = usage.performance
+        memory = readMemory()
+        ram = memory?.percent ?? ram
+        let graphics = readGPU()
+        gpu = graphics?.utilization
+        gpuMemoryGB = graphics?.memoryBytes.map { $0 / 1_073_741_824 }
+        thermalState = ProcessInfo.processInfo.thermalState
+        uptime = ProcessInfo.processInfo.systemUptime
+        var loads = [Double](repeating: 0, count: 3)
+        loadAverage = getloadavg(&loads, 3) == 3 ? loads : []
+        historyTimeline.record(at: ProcessInfo.processInfo.systemUptime)
+        func append(_ history: inout [Double?], _ value: Double?) {
+            history = Array((history + [value]).suffix(historyTimeline.timestamps.count))
+        }
+        append(&cpuHistory, usage.total)
+        append(&efficiencyHistory, efficiencyCPU)
+        append(&performanceHistory, performanceCPU)
+        append(&gpuHistory, gpu)
+        append(&gpuMemoryHistory, graphics?.memoryBytes.map {
+            $0 / Double(ProcessInfo.processInfo.physicalMemory) * 100
+        })
+        historyTimes = historyTimeline.offsets
+        historySeconds = historyTimeline.duration
         onUpdate?()
     }
 
-    // MARK: CPU (aggregate ticks, diffed between samples)
-
-    private func readCPU() -> Double {
-        var count = mach_msg_type_number_t(
-            MemoryLayout<host_cpu_load_info_data_t>.stride / MemoryLayout<integer_t>.stride)
-        var info = host_cpu_load_info_data_t()
-
-        let kr = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &count)
-            }
+    private func readCPU() -> CPUUsage {
+        var count: natural_t = 0
+        var info: processor_info_array_t?
+        var infoCount: mach_msg_type_number_t = 0
+        let result = host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO,
+                                         &count, &info, &infoCount)
+        guard result == KERN_SUCCESS, let info else {
+            return CPUUsage(current: [], previous: [], efficiencyIDs: [], performanceIDs: [])
         }
-        guard kr == KERN_SUCCESS else { return 0 }
-
-        let now = (info.cpu_ticks.0, info.cpu_ticks.1, info.cpu_ticks.2, info.cpu_ticks.3) // user, system, idle, nice
-        defer { previousTicks = now }
-        guard let prev = previousTicks else { return 0 }
-
-        let user = Double(now.0 &- prev.0)
-        let system = Double(now.1 &- prev.1)
-        let idle = Double(now.2 &- prev.2)
-        let nice = Double(now.3 &- prev.3)
-        let total = user + system + idle + nice
-        guard total > 0 else { return 0 }
-        return min(100, max(0, (total - idle) / total * 100))
+        defer {
+            vm_deallocate(mach_task_self_, vm_address_t(UInt(bitPattern: info)),
+                          vm_size_t(infoCount) * vm_size_t(MemoryLayout<integer_t>.stride))
+        }
+        let ticks = UnsafeBufferPointer(start: info, count: Int(infoCount)).map { UInt32(bitPattern: $0) }
+        defer { previousTicks = ticks }
+        return CPUUsage(current: ticks, previous: previousTicks,
+                        efficiencyIDs: coreGroups.efficiency, performanceIDs: coreGroups.performance)
     }
 
-    // MARK: Memory (matches Activity Monitor's "Memory Used": app + wired + compressed)
+    /// Map logical IDs explicitly rather than assuming E/P ordering on every chip.
+    private static func readCoreGroups() -> (efficiency: [Int], performance: [Int]) {
+        let cpus = IORegistryEntryFromPath(kIOMainPortDefault, "IODeviceTree:/cpus")
+        guard cpus != 0 else { return ([], []) }
+        defer { IOObjectRelease(cpus) }
+        var iterator: io_iterator_t = 0
+        guard IORegistryEntryGetChildIterator(cpus, kIODeviceTreePlane, &iterator) == KERN_SUCCESS else {
+            return ([], [])
+        }
+        defer { IOObjectRelease(iterator) }
+        var efficiency: [Int] = []
+        var performance: [Int] = []
+        var entry = IOIteratorNext(iterator)
+        while entry != 0 {
+            let kind = IORegistryEntryCreateCFProperty(entry, "cluster-type" as CFString,
+                                                       kCFAllocatorDefault, 0)?.takeRetainedValue() as? Data
+            let id = IORegistryEntryCreateCFProperty(entry, "logical-cpu-id" as CFString,
+                                                     kCFAllocatorDefault, 0)?.takeRetainedValue() as? NSNumber
+            if let id = id?.intValue, let kind {
+                if kind.first == Character("E").asciiValue { efficiency.append(id) }
+                if kind.first == Character("P").asciiValue { performance.append(id) }
+            }
+            IOObjectRelease(entry)
+            entry = IOIteratorNext(iterator)
+        }
+        return (efficiency, performance)
+    }
 
-    private func readMemory() -> (percent: Double, usedGB: Double) {
+    private func readMemory() -> MemoryBreakdown? {
         var count = mach_msg_type_number_t(
             MemoryLayout<vm_statistics64_data_t>.stride / MemoryLayout<integer_t>.stride)
         var stats = vm_statistics64_data_t()
-
-        let kr = withUnsafeMutablePointer(to: &stats) {
+        let result = withUnsafeMutablePointer(to: &stats) {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
                 host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
             }
         }
-        guard kr == KERN_SUCCESS else { return (0, 0) }
-
-        let pageSize = Double(getpagesize())
-        let pages = Double(stats.internal_page_count)
-            - Double(stats.purgeable_count)
-            + Double(stats.wire_count)
-            + Double(stats.compressor_page_count)
-        let usedBytes = pages * pageSize
-        let totalBytes = Double(ProcessInfo.processInfo.physicalMemory)
-        return (min(100, usedBytes / totalBytes * 100), usedBytes / 1_073_741_824)
+        guard result == KERN_SUCCESS else { return nil }
+        return MemoryBreakdown(internalPages: UInt64(stats.internal_page_count),
+                               purgeablePages: UInt64(stats.purgeable_count),
+                               wiredPages: UInt64(stats.wire_count),
+                               compressedPages: UInt64(stats.compressor_page_count),
+                               pageSize: Double(getpagesize()),
+                               totalBytes: Double(ProcessInfo.processInfo.physicalMemory))
     }
 
-    // MARK: GPU (undocumented IOKit stats; returns nil if unavailable)
-
-    private func readGPU() -> Double? {
+    private func readGPU() -> GPUReading? {
         guard let matching = IOServiceMatching("IOAccelerator") else { return nil }
         var iterator: io_iterator_t = 0
-        guard IOServiceGetMatchingServices(0, matching, &iterator) == KERN_SUCCESS else {
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else {
             return nil
         }
         defer { IOObjectRelease(iterator) }
-
-        var best: Double?
+        var best: GPUReading?
         var entry = IOIteratorNext(iterator)
         while entry != 0 {
             var unmanaged: Unmanaged<CFMutableDictionary>?
             if IORegistryEntryCreateCFProperties(entry, &unmanaged, kCFAllocatorDefault, 0) == KERN_SUCCESS,
                let dict = unmanaged?.takeRetainedValue() as? [String: Any],
                let perf = dict["PerformanceStatistics"] as? [String: Any] {
-                let keys = ["Device Utilization %", "GPU Activity(%)", "Renderer Utilization %"]
-                for key in keys {
-                    if let v = (perf[key] as? NSNumber)?.doubleValue {
-                        best = max(best ?? 0, v)
-                        break
-                    }
+                let reading = GPUReading(statistics: perf)
+                // Keep usage and memory from the same device on multi-GPU Macs.
+                if best == nil || (reading.utilization ?? -1) > (best?.utilization ?? -1) {
+                    best = reading
                 }
             }
             IOObjectRelease(entry)
             entry = IOIteratorNext(iterator)
         }
-        return best.map { min(100, max(0, $0)) }
+        return best
     }
 }
 
-// MARK: - App delegate (status item + popover)
+// MARK: - App delegate (status item, popover, settings)
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private let monitor = SystemMonitor()
+    private let presentation = PopoverPresentation()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory) // no Dock icon
-
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] != "1" else { return }
+        #endif
+        Prefs.migrate()
+        NSApp.setActivationPolicy(.accessory)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePopover(_:))
-
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: StatsView(monitor: monitor))
-
+        popover.delegate = self
+        popover.contentViewController = NSHostingController(rootView: StatsView(monitor: monitor, presentation: presentation) { [weak self] size in
+            // Apply after SwiftUI finishes its measurement pass.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, abs(self.popover.contentSize.height - size.height) > 0.5 else { return }
+                self.popover.contentSize = size
+            }
+        })
         monitor.onUpdate = { [weak self] in self?.renderTitle() }
-        // Redraw straight away when the label style is switched in the popover.
         NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.renderTitle() }
+            MainActor.assumeIsolated { self?.preferencesChanged() }
         }
-        renderTitle()
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateAvailableHeight() }
+        }
+        preferencesChanged()
     }
 
     @objc private func togglePopover(_ sender: AnyObject?) {
+        if popover.isShown { popover.performClose(sender) }
+        else { showPopover() }
+    }
+
+    private func showPopover() {
         guard let button = statusItem.button else { return }
-        if popover.isShown {
-            popover.performClose(sender)
-        } else {
-            NSApp.activate(ignoringOtherApps: true)
+        updateAvailableHeight()
+        NSApp.activate(ignoringOtherApps: true)
+        if !popover.isShown {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
     }
 
-    /// Builds `CPU 12% | RAM 48% | GPU 8%` (or the icon version) with native menu bar typography.
+    private func updateAvailableHeight() {
+        let screen = statusItem.button?.window?.screen ?? NSScreen.main
+        // Leave room for the arrow and a small margin above the Dock.
+        presentation.maximumHeight = max(1, (screen?.visibleFrame.height ?? 800) - 24)
+    }
+
+    private func preferencesChanged() { renderTitle() }
+
+    func popoverDidClose(_ notification: Notification) { presentation.reset() }
+
     private func renderTitle() {
-        let labelAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 9.5, weight: .semibold),
-            .foregroundColor: NSColor.secondaryLabelColor,
-            .baselineOffset: 0.5
-        ]
-        let valueAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
-            .foregroundColor: NSColor.labelColor
-        ]
-        let sepAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12, weight: .regular),
-            .foregroundColor: NSColor.tertiaryLabelColor
-        ]
-
-        let useIcons = UserDefaults.standard.bool(forKey: Prefs.iconLabelsKey)
-
-        let title = NSMutableAttributedString()
-        func add(_ name: String, _ symbol: String, _ value: Double?) {
-            if title.length > 0 {
-                title.append(NSAttributedString(string: "  |  ", attributes: sepAttrs))
-            }
-            if useIcons, let icon = labelIcon(symbol, name) {
-                title.append(icon)
-                title.append(NSAttributedString(string: " ", attributes: labelAttrs))
-            } else {
-                title.append(NSAttributedString(string: name + " ", attributes: labelAttrs))
-            }
-            var attrs = valueAttrs
-            // Keep low or unavailable usage neutral; highlight elevated percentages.
-            let color: NSColor
-            if let value, value >= 80 {
-                color = .systemRed
-            } else if let value, value >= 60 {
-                color = .systemOrange
-            } else {
-                color = .labelColor
-            }
-            attrs[.foregroundColor] = color
-            title.append(NSAttributedString(string: format(value), attributes: attrs))
-        }
-
-        // Same SF Symbols as the popover rows.
-        add("CPU", "cpu", monitor.cpu)
-        add("RAM", "memorychip", monitor.ram)
-        add("GPU", "display", monitor.gpu)
-        statusItem.button?.attributedTitle = title
+        let style = MenuBarStyle(rawValue: UserDefaults.standard.string(forKey: Prefs.menuBarStyleKey) ?? "") ?? .text
+        guard let button = statusItem.button else { return }
+        button.attributedTitle = MenuBarRenderer.title(cpu: monitor.cpu, ram: monitor.ram, gpu: monitor.gpu, style: style,
+                                                     usageColors: UserDefaults.standard.bool(forKey: Prefs.usageColorsKey))
+        button.setAccessibilityLabel("Meters")
+        button.setAccessibilityValue("CPU \(MenuBarPresentation.percent(monitor.cpu)), GPU \(MenuBarPresentation.percent(monitor.gpu)), memory \(MenuBarPresentation.percent(monitor.ram))")
+        button.toolTip = "Meters — CPU, GPU and memory usage"
     }
 
-    /// An SF Symbol sized and coloured like the text labels, as an inline attachment.
-    private func labelIcon(_ symbol: String, _ description: String) -> NSAttributedString? {
-        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [.secondaryLabelColor]))
-        guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)?
-            .withSymbolConfiguration(config) else { return nil }
-
-        let attachment = NSTextAttachment()
-        attachment.image = image
-        // Nudge down so the icon sits on the same line as the digits.
-        attachment.bounds = CGRect(x: 0, y: -2, width: image.size.width, height: image.size.height)
-        return NSAttributedString(attachment: attachment)
-    }
-
-    /// Pads with figure spaces (same width as digits) so the bar doesn't jitter.
-    private func format(_ value: Double?) -> String {
-        guard let value else { return "--%" }
-        let number = String(Int(value.rounded()))
-        let pad = String(repeating: "\u{2007}", count: max(0, 2 - number.count))
-        return pad + number + "%"
-    }
-}
-
-// MARK: - Popover UI
-
-struct StatsView: View {
-    @ObservedObject var monitor: SystemMonitor
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @AppStorage(Prefs.iconLabelsKey) private var useIconLabels = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            MetricRow(title: "CPU", symbol: "cpu", value: monitor.cpu,
-                      detail: nil, history: monitor.cpuHistory, tint: .blue)
-
-            MetricRow(title: "RAM", symbol: "memorychip", value: monitor.ram,
-                      detail: String(format: "%.1f of %.0f GB", monitor.ramUsedGB, monitor.ramTotalGB),
-                      history: monitor.ramHistory, tint: .green)
-
-            MetricRow(title: "GPU", symbol: "display", value: monitor.gpu,
-                      detail: nil, history: monitor.gpuHistory, tint: .orange)
-
-            Divider()
-
-            HStack {
-                Text("Icons in menu bar")
-                Spacer()
-                Toggle("Icons in menu bar", isOn: $useIconLabels)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-            }
-
-            HStack {
-                Text("Launch at login")
-                Spacer()
-                Toggle("Launch at login", isOn: Binding(
-                    get: { launchAtLogin },
-                    set: { newValue in
-                        do {
-                            if newValue {
-                                try SMAppService.mainApp.register()
-                            } else {
-                                try SMAppService.mainApp.unregister()
-                            }
-                        } catch {
-                            NSSound.beep()
-                        }
-                        launchAtLogin = SMAppService.mainApp.status == .enabled
-                    }
-                ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-            }
-
-            Divider()
-
-            Button(action: { NSApp.terminate(nil) }) {
-                HStack {
-                    Text("Quit Meters")
-                    Spacer()
-                    Text("⌘Q")
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut("q")
-        }
-        .padding(16)
-        .frame(width: 280)
-    }
-}
-
-struct MetricRow: View {
-    let title: String
-    let symbol: String
-    let value: Double?
-    let detail: String?
-    let history: [Double]
-    let tint: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: symbol)
-                    .foregroundStyle(tint)
-                    .frame(width: 18)
-                Text(title)
-                    .font(.headline)
-                Spacer()
-                Text(value.map { "\(Int($0.rounded()))%" } ?? "N/A")
-                    .font(.system(.title3, design: .rounded, weight: .semibold))
-                    .monospacedDigit()
-            }
-
-            if let detail {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Chart {
-                ForEach(Array(history.enumerated()), id: \.offset) { index, v in
-                    AreaMark(x: .value("t", index), y: .value("v", v))
-                        .foregroundStyle(
-                            LinearGradient(colors: [tint.opacity(0.35), tint.opacity(0.02)],
-                                           startPoint: .top, endPoint: .bottom))
-                        .interpolationMethod(.monotone)
-                    LineMark(x: .value("t", index), y: .value("v", v))
-                        .foregroundStyle(tint)
-                        .lineStyle(StrokeStyle(lineWidth: 1.5))
-                        .interpolationMethod(.monotone)
-                }
-            }
-            .chartYScale(domain: 0...100)
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .frame(height: 38)
-        }
+    func showSettings() {
+        presentation.openCustomization()
+        showPopover()
     }
 }

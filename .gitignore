@@ -13,6 +13,9 @@ xcuserdata/
 .build/
 .swiftpm/
 
+# Local design previews and agent scratch files
+.superpowers/
+
 # Archives and exports
 *.ipa
 *.dSYM.zip
